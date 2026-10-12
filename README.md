@@ -72,8 +72,8 @@ pip install python-dotenv langchain-community langchain-openai faiss-cpu pydanti
 OPENAI_API_KEY=본인의_API_키
 
 MEGACOFFEE_DATA_DIR=./data/megacoffee_rag_enriched
-RAG_INDEX_DIR=./rag_index/faiss_openai_v1
-RAG_EMBEDDING_JSON_PATH=./rag_embeddings.json
+RAG_INDEX_DIR=./rag/rag_index/faiss_openai_v1
+RAG_EMBEDDING_JSON_PATH=./rag/rag_embeddings.json
 
 RAG_EMBEDDING_MODEL=text-embedding-3-small
 RAG_ANSWER_MODEL=gpt-4.1-mini
@@ -95,8 +95,8 @@ RAG_REBUILD_INDEX=1
 
 실행하면 다음 결과가 생성됩니다.
 
-- `rag_index/faiss_openai_v1/`: FAISS 인덱스
-- `rag_embeddings.json`: 원문·메타데이터·실제 임베딩 벡터를 포함한 JSON
+- `rag/rag_index/faiss_openai_v1/`: FAISS 인덱스
+- `rag/rag_embeddings.json`: 원문·메타데이터·실제 임베딩 벡터를 포함한 JSON
 
 생성 후에는 다음처럼 바꿔 기존 결과를 재사용합니다.
 
