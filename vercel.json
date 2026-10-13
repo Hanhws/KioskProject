@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{.next,node_modules,app,components,lib,tests,scripts,docs,public}/**"
+    }
+  }
+}

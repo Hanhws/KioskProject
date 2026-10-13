@@ -252,3 +252,64 @@ result = service.ask(
 - OpenAI 질문 임베딩을 이용한 실제 검색
 - 외부 `plan`과 이전 조건을 전달하는 서비스 호출 규격
 - 노트북 전용 `input()`, `display()`, 검증용 `assert`가 배포 모듈에 포함되지 않았는지 확인
+
+---
+
+# 프론트엔드·주문 기능
+
+채팅 화면, 추천 메뉴 카드, 메뉴판(빠른 주문), 주문 내역·총액, 장바구니 추가·수정·삭제, 옵션 검증, 금액 계산, 매장/포장 → 최종 확인 → 결제 → 주문번호까지의 주문 흐름을 구현했습니다. Next.js(App Router) + TypeScript이며, RAG는 `api/index.py`(FastAPI)를 통해 호출합니다.
+
+## 구조
+
+```text
+app/                 Next.js 페이지·전역 스타일
+components/          KioskApp(전체 배치), ChatView, MenuBoard, MenuCard, OptionSheet, CartPanel
+lib/order/           주문 도메인 (React와 무관한 순수 함수)
+  catalog.ts           CSV에서 만든 메뉴·옵션·페어링 조회
+  validation.ts        옵션 검증: 적용 대상, 최대 횟수, 동시 선택 불가, 온도, 수량
+  pricing.ts           금액 계산: 온도별 기본가 + 옵션 추가금 × 횟수, × 수량
+  engine.ts            장바구니 액션 처리 + HTI 주문 진행 단계(1~9)와 안내 문구
+  stageReply.ts        닫힌 질문에 대한 짧은 답을 서버 없이 처리
+lib/kiosk/store.ts   대화 기록 + 주문 상태 + 서버 응답 병합
+lib/generated/       scripts/build-catalog.mjs가 CSV로 만든 catalog.json
+api/index.py         /api/chat, /api/health (RAG 연결, 통합 라우터 자리)
+tests/               HTI ID별 테스트 (vitest)
+docs/API.md          프론트 ↔ 서버 연결 규격, cart_actions 형식
+```
+
+## 규칙과 근거
+
+| 항목 | 규칙 | 근거 |
+| --- | --- | --- |
+| 옵션 적용 대상 | `rag/build_index.py`의 `option_relation()`과 같은 계산 | options.csv, menu_variants.allergens·decaf_available |
+| 옵션 최대 횟수·추가금 | `max_quantity`, `price_delta_krw` | options.csv |
+| 샷 추가 + 연하게, 두유 + 저지방 | 동시 선택 불가 | 팀 규칙 |
+| 온도 | 두 온도 메뉴는 필수 질문, ICE만 있는 메뉴는 자동, 디저트는 없음 | menu_catalog.available_temperatures |
+| 같은 메뉴·온도·옵션 | 수량 합침, 옵션이 다르면 별도 항목 | HTI 6.1.2 |
+| 수량 | 10개 이상 확인 질문, 항목당 최대 999 | HTI 6.1.3, 팀 규칙 |
+| 디저트 제안 | 음료만 담겼을 때 주문당 한 번, pairings.csv | HTI 단계 5, 공통 규칙 4 |
+| 결제 | 카드·간편결제만, 모의 주문번호 | FAQ-005 |
+
+## 실행
+
+```bash
+npm install
+cp .env.example .env          # OPENAI_API_KEY 입력
+pip install -r requirements.txt uvicorn
+
+npm run api                    # 터미널 1: FastAPI (localhost:8000)
+npm run dev                    # 터미널 2: Next.js (localhost:3000), /api/* 는 8000으로 프록시
+npm test                       # 주문 로직 테스트
+```
+
+API 서버가 없어도 메뉴판·장바구니·주문 흐름은 동작하고, 대화창에는 연결 실패 안내가 나옵니다.
+
+## Vercel 배포
+
+한 프로젝트에 Next.js와 Python 함수(`api/index.py`)를 함께 배포합니다. `next.config.mjs`가 배포 환경의 `/api/*` 요청을 Python 함수로 보냅니다.
+
+1. 저장소를 Vercel에 연결 (Framework: Next.js)
+2. Environment Variables에 `OPENAI_API_KEY` 등 `.env.example` 값 입력
+3. `rag/rag_index/`와 `rag/rag_embeddings.json`이 저장소에 있어야 합니다 (배포 환경에서는 인덱스를 새로 만들 수 없음)
+
+주의: `langchain-community`·`faiss-cpu` 때문에 Python 함수 크기가 Vercel 제한(압축 해제 250MB)에 가까울 수 있습니다. 넘으면 API만 Render·Railway 등에 따로 띄우고 `NEXT_PUBLIC_API_BASE_URL`과 `CORS_ALLOW_ORIGINS`를 설정하세요.
