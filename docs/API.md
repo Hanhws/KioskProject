@@ -1,6 +1,6 @@
 # 프론트엔드 ↔ 서버 연결 규격
 
-프론트엔드는 `POST /api/chat`으로 한 턴씩 보냅니다. 서버 입구는 `api/index.py`의 `route_message()`입니다.
+프론트엔드는 `POST /api/chat`으로 한 턴씩 보냅니다. 서버 입구는 KioskProject의 `api/index.py`의 `route_message()`입니다.
 지금은 RAG `CafeRAGService.ask()`만 호출합니다. 통합 담당은 이 함수 안에 요청 분류·복합 요청 분해·결과 병합을 넣으면 됩니다.
 
 장바구니·옵션 검증·금액 계산·주문 진행 단계는 프론트엔드(`lib/order/`)가 맡습니다.

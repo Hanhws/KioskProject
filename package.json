@@ -1,12 +1,11 @@
 {
-  "name": "kiosk-project",
+  "name": "kiosk-pj",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "catalog": "node scripts/build-catalog.mjs",
     "predev": "npm run catalog",
     "dev": "next dev",
-    "api": "python3 -m uvicorn api.index:app --reload --port 8000",
     "prebuild": "npm run catalog",
     "build": "next build",
     "start": "next start",
