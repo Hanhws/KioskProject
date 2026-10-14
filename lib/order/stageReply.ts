@@ -8,19 +8,20 @@
 import type { CartAction, EngineAction, OrderState } from "./types";
 import { getMenu, getOption } from "./catalog";
 
-const YES = /^(네|예|응|어|ㅇㅇ|맞아|맞아요|맞습니다|좋아|좋아요|그래|그래요|그렇게|넵|넹|yes|ok|오케이)/i;
-const NO = /^(아니|아뇨|아니요|아니오|취소|됐어|no)/i;
-const HOT = /(따뜻|따듯|뜨거|뜨겁|핫|hot|뜨아)/i;
-const ICE = /(아이스|차가|차갑|시원|ice|아아|얼음)/i;
-const DINE_IN = /(매장|먹고|여기서|홀)/;
-const TAKEOUT = /(포장|테이크|가져|들고)/;
-const CARD = /(카드|신용|체크)/;
-const EASY_PAY = /(간편|페이|pay|삼성|카카오|네이버|애플|토스)/i;
-const CASH = /(현금)/;
-const DONE = /^(그게\s*다|이제\s*됐|다\s*됐|없어요|없습니다|없어|괜찮아요|주문할게|주문 할게|결제할게|결제 할게|계산할게|계산해)/;
+// 문장 일부에만 맞는 표현은 추가 요청을 삼킬 수 있으므로 단답 전체에만 맞춘다.
+const YES = /^(?:네|예|응|어|ㅇㅇ|맞아|맞아요|맞습니다|좋아|좋아요|그래|그래요|그렇게|넵|넹|yes|ok|오케이)$/i;
+const NO = /^(?:아니|아뇨|아니요|아니오|취소|됐어|no)$/i;
+const HOT = /^(?:따뜻하게|따뜻한\s*(?:걸로|것으로|거요)|뜨겁게|핫(?:으로|요)?|hot(?:으로|요)?|뜨아)$/i;
+const ICE = /^(?:아이스(?:요|로)?|아이스로\s*해\s*주세요|차갑게|시원하게|ice(?:요|로)?|아아)$/i;
+const DINE_IN = /^(?:매장(?:이요|에서\s*먹을게요)?|먹고\s*갈게요|여기서\s*먹을게요)$/;
+const TAKEOUT = /^(?:포장(?:이요|할게요|해\s*주세요)?|테이크아웃(?:이요)?|가져갈게요)$/;
+const CARD = /^(?:카드(?:로\s*할게요|요)?|신용카드|체크카드)$/;
+const EASY_PAY = /^(?:간편결제(?:로\s*할게요|요)?|(?:삼성|카카오|네이버|애플|토스)페이(?:로\s*할게요|요)?)$/i;
+const CASH = /^현금(?:\s*돼요\?)?$/;
+const DONE = /^(?:그게\s*다예요|이제\s*됐어요|다\s*됐어요|더\s*없어요|없어요|없습니다|괜찮아요|주문할게요|결제할게요|계산할게요)$/;
 
 export function interpretStageReply(state: OrderState, rawText: string): EngineAction[] | null {
-  const text = rawText.trim();
+  const text = rawText.trim().replace(/[.!]+$/, "").trim();
   if (!text || text.length > 20) return null;
   const pending = state.pending;
 
@@ -28,7 +29,7 @@ export function interpretStageReply(state: OrderState, rawText: string): EngineA
     const hot = HOT.test(text);
     const ice = ICE.test(text);
     if (hot === ice) return null; // 둘 다 있거나 둘 다 없으면 서버가 판단 (HTI 8.2)
-    return [{ ...pending.action, temperature: hot ? "HOT" : "ICE" }];
+    return [{ ...pending.action, temperature: hot ? "HOT" : "ICE", pending_resolution: true }];
   }
   if (pending?.kind === "quantity_confirm") {
     if (YES.test(text)) return [{ ...pending.action, confirmed: true } as CartAction];
@@ -42,13 +43,14 @@ export function interpretStageReply(state: OrderState, rawText: string): EngineA
   }
   if (pending?.kind === "target") {
     const candidates = state.lines.filter((line) => pending.lineIds.includes(line.lineId));
+    const targetText = text.replace(/요$/, "").trim();
     const ranked = candidates.map((line) => {
       const menu = getMenu(line.menuId);
       const menuTerms = [menu?.name, ...(menu?.aliases ?? [])].filter((term): term is string => !!term);
-      const menuScore = Math.max(0, ...menuTerms.filter((term) => text.includes(term)).map((term) => term.length));
+      const menuScore = Math.max(0, ...menuTerms.filter((term) => targetText === term).map((term) => term.length));
       const optionScore = Object.keys(line.options).some((id) => {
         const name = getOption(id)?.name ?? "";
-        return name.length > 0 && (text.includes(name) || text.includes(name.split(" ")[0]));
+        return name.length > 0 && targetText === name;
       }) ? 100 : 0;
       return { line, score: menuScore + optionScore };
     }).filter((row) => row.score > 0).sort((a, b) => b.score - a.score);

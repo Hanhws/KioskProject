@@ -133,8 +133,68 @@ describe("장바구니 (cart)", () => {
     const asked = run(initialOrderState(), add(LATTE), add(CHEESECAKE));
     expect(asked.state.lines).toHaveLength(0);
     expect(asked.state.queued).toHaveLength(1);
-    const done = run(asked.state, add(LATTE, { temperature: "HOT" }));
+    const done = run(asked.state, add(LATTE, { temperature: "HOT", pending_resolution: true }));
     expect(done.state.lines.map((l) => l.menuId)).toEqual([LATTE, CHEESECAKE]);
+  });
+
+  it("아이스요와 케이크 추가를 함께 받아 라떼를 한 번만 담는다", () => {
+    const asked = run(initialOrderState(), add(LATTE));
+    expect(interpretStageReply(asked.state, "아이스요, 치즈케이크도 주세요")).toBeNull();
+    const done = run(asked.state,
+      add(LATTE, { temperature: "ICE", pending_resolution: true }), add(CHEESECAKE));
+    expect(done.state.lines.map((line) => [line.menuId, line.quantity])).toEqual([[LATTE, 1], [CHEESECAKE, 1]]);
+    expect(done.state.pending).toBeNull();
+  });
+
+  it("보류 중 독립 새 주문을 먼저 처리하고 기존 온도를 다시 묻는다", () => {
+    const asked = run(initialOrderState(), add(LATTE));
+    const added = run(asked.state, add(CHEESECAKE));
+    expect(added.state.lines.map((line) => line.menuId)).toEqual([CHEESECAKE]);
+    expect(added.state.pending?.kind).toBe("temperature");
+    expect(added.reply.text).toContain("카페라떼는 따뜻한 것과 아이스 중");
+    const done = run(added.state, ...interpretStageReply(added.state, "아이스요")!);
+    expect(done.state.lines.map((line) => line.menuId)).toEqual([CHEESECAKE, LATTE]);
+  });
+
+  it("새 주문에도 온도 질문이 필요하면 새 메뉴부터 완성하고 기존 온도를 다시 묻는다", () => {
+    const original = run(initialOrderState(), add(LATTE));
+    const newer = run(original.state, add(CAPPUCCINO));
+    expect(newer.state.pending?.kind).toBe("temperature");
+    expect(newer.reply.text).toContain("카푸치노는 따뜻한 것과 아이스 중");
+    const newDone = run(newer.state, ...interpretStageReply(newer.state, "아이스요")!);
+    expect(newDone.state.lines.map((line) => line.menuId)).toEqual([CAPPUCCINO]);
+    expect(newDone.reply.text).toContain("카페라떼는 따뜻한 것과 아이스 중");
+    const allDone = run(newDone.state, ...interpretStageReply(newDone.state, "따뜻하게")!);
+    expect(allDone.state.lines.map((line) => line.menuId)).toEqual([CAPPUCCINO, LATTE]);
+  });
+
+  it("보류 중 다른 기존 항목의 수량 수정은 보류와 대기 주문을 유지한다", () => {
+    let result = run(initialOrderState(), add(AMERICANO, { temperature: "ICE" }));
+    result = run(result.state, add(LATTE), add(CHEESECAKE));
+    const updated = run(result.state, { type: "update_item", target: { menu_id: AMERICANO }, quantity: 2 });
+    expect(updated.state.lines[0].quantity).toBe(2);
+    expect(updated.state.pending?.kind).toBe("temperature");
+    expect(updated.state.queued).toEqual([add(CHEESECAKE)]);
+    const done = run(updated.state, ...interpretStageReply(updated.state, "아이스요")!);
+    expect(done.state.lines.map((line) => line.menuId)).toEqual([AMERICANO, LATTE, CHEESECAKE]);
+  });
+
+  it("단답만 로컬에서 처리하고 추가 요청이 섞이면 서버로 보낸다", () => {
+    const temp = run(initialOrderState(), add(LATTE)).state;
+    expect(interpretStageReply(temp, "아이스요")).toMatchObject([{ pending_resolution: true, temperature: "ICE" }]);
+    expect(interpretStageReply(temp, "아이스요, 치즈케이크도 주세요")).toBeNull();
+    const clear = run(run(initialOrderState(), add(CHEESECAKE)).state, { type: "clear_cart" }).state;
+    expect(interpretStageReply(clear, "네")).toMatchObject([{ type: "clear_cart", confirmed: true }]);
+    expect(interpretStageReply(clear, "아니요")).toEqual([{ type: "cancel_pending" }]);
+    expect(run(clear, ...interpretStageReply(clear, "아니요")!).state.lines).toHaveLength(1);
+  });
+
+  it("명시적으로 보류 요청을 취소하면 해당 주문과 대기 액션을 실행하지 않는다", () => {
+    const asked = run(initialOrderState(), add(LATTE), add(CHEESECAKE));
+    const cancelled = run(asked.state, { type: "cancel_pending" });
+    expect(cancelled.state.pending).toBeNull();
+    expect(cancelled.state.queued).toHaveLength(0);
+    expect(cancelled.state.lines).toHaveLength(0);
   });
 
   it("6.1.2 같은 메뉴 다른 옵션은 별도 항목, 합계 7,300원", () => {
@@ -270,6 +330,8 @@ describe("주문 진행 흐름 (flow)", () => {
     expect(result.state.stage).toBe("final_confirm");
     expect(result.reply.text).toContain("총 4,700원");
     expect(result.reply.text).toContain("이대로 주문할까요?");
+    expect(interpretStageReply(result.state, "네")).toEqual([{ type: "confirm_order" }]);
+    expect(interpretStageReply(result.state, "네, 그런데 쿠키도 추가요")).toBeNull();
   });
 
   it("7.3.1 빈 장바구니로 결제 요청하면 메뉴 선택으로", () => {

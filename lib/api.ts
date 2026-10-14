@@ -28,6 +28,11 @@ export interface ChatRequest {
   history: { role: "user" | "assistant"; content: string }[];
   context: {
     cart: ReturnType<typeof cartSnapshot>;
+    pending: {
+      kind: "temperature" | "quantity_confirm" | "clear_confirm" | "target";
+      action?: CartAction;
+      line_ids?: string[];
+    } | null;
     last_recommended_menu_ids: string[];
     prior_conditions: Record<string, unknown> | null;
   };

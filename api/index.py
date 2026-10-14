@@ -10,7 +10,7 @@ from typing import Any, Literal, Mapping, Protocol
 from fastapi import FastAPI
 from pydantic import BaseModel, Field, TypeAdapter
 
-from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _menu_mentions, _option_terms
+from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _menu_mentions, _option_terms, _ordinal
 from .fake_rag import FakeRAG
 
 
@@ -19,8 +19,15 @@ class HistoryMessage(BaseModel):
     content: str
 
 
+class PendingContext(BaseModel):
+    kind: Literal["temperature", "quantity_confirm", "clear_confirm", "target"]
+    action: dict[str, Any] | None = None
+    line_ids: list[str] = Field(default_factory=list)
+
+
 class ChatContext(BaseModel):
     cart: dict[str, Any]
+    pending: PendingContext | None = None
     last_recommended_menu_ids: list[str]
     prior_conditions: dict[str, Any] | None
 
@@ -44,6 +51,7 @@ class AddItemAction(BaseModel):
     temperature: Literal["HOT", "ICE"] | None = None
     options: dict[str, int] | None = None
     quantity: int | None = None
+    pending_resolution: bool | None = None
 
 
 class UpdateItemAction(BaseModel):
@@ -151,6 +159,16 @@ def _suggest_menu(term: str | None) -> str | None:
     return aliases[near[0]] if near else None
 
 
+def _menu_candidates(term: str | None) -> list[dict[str, Any]]:
+    """Show catalog matches for a broad name without guessing a specific item."""
+    if not term:
+        return []
+    key = "".join(term.lower().split())
+    return [menu for menu in CATALOG["menus"]
+            if key and any(key in "".join(alias.lower().split())
+                           for alias in [menu["name"], *menu["aliases"]])]
+
+
 def _target(cart: dict[str, Any], term: str | None, menu_id: str | None) -> tuple[dict | None, str | None]:
     lines = cart.get("lines", [])
     if term:
@@ -169,9 +187,9 @@ def _target(cart: dict[str, Any], term: str | None, menu_id: str | None) -> tupl
 
 def _action(step: TurnStep, cart: dict[str, Any], last_menu: str | None,
             recommended: list[str]) -> tuple[dict | None, str | None, str | None]:
-    referent = not step.menu_term or bool(re.search(r"그거|그걸|첫\s*번째|첫째|1\s*번", step.menu_term))
+    referent = not step.menu_term or bool(re.search(r"그거|그걸", step.menu_term)) or _ordinal(step.menu_term) is not None
     menu_id = _menu_id(step.menu_term) or (last_menu if referent else None)
-    ordinal = step.ordinal or (1 if re.search(r"첫\s*번째|첫째|1\s*번", step.text) else None)
+    ordinal = step.ordinal or _ordinal(step.text)
     if ordinal is not None:
         menu_id = recommended[ordinal - 1] if ordinal <= len(recommended) else None
         if not menu_id:
@@ -221,17 +239,13 @@ def _action(step: TurnStep, cart: dict[str, Any], last_menu: str | None,
 
 
 def _ordered_recommendations(result: Mapping[str, Any]) -> list[str]:
-    """Only resolve 'first' when the recommendation order is visible in choices or answer."""
-    valid = {menu["id"]: menu["name"] for menu in CATALOG["menus"]}
-    offered = [menu_id for menu_id in result.get("related_menu_ids", []) if menu_id in valid]
-    choices = [row.get("value") if row.get("field") == "menu_group_id" else row.get("source_id")
-               for row in result.get("choices", [])]
-    chosen = [menu_id for menu_id in choices if menu_id in offered]
-    answer = str(result.get("answer", ""))
-    positions = sorted((answer.find(valid[menu_id]), menu_id) for menu_id in offered
-                       if valid[menu_id] in answer)
-    # 답변에 이름이 나온 순서가 사용자가 읽는 순서다. 없는 이름은 버튼 순서를 쓴다.
-    return list(dict.fromkeys([*(menu_id for _, menu_id in positions), *chosen]))
+    """RAG가 확정한 ID 목록을 추천 순서의 단일 기준으로 사용한다."""
+    valid_ids = {menu["id"] for menu in CATALOG["menus"]}
+    return list(dict.fromkeys(
+        menu_id
+        for menu_id in result.get("related_menu_ids", [])
+        if menu_id in valid_ids
+    ))
 
 
 def route_message(request: ChatRequest, rag: RagService, planner: Planner | None = None) -> ChatResponse:
@@ -239,6 +253,8 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
     planner = planner or MockPlanner()
     planner_context = {**request.context.model_dump(), "history": [row.model_dump() for row in request.history]}
     plan: DialoguePlan = planner.plan(request.message, planner_context)
+    mutating = {"add", "update_option", "update_quantity", "remove", "replace", "clear_cart"}
+    has_change = any(step.kind in mutating for step in plan.steps)
     answers: list[str] = []
     actions: list[dict[str, Any]] = []
     choices: list[RagChoice] = []
@@ -249,10 +265,14 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
     resume_prompt = None
     prior_conditions = None
     last_menu: str | None = None
+    unavailable_handled = False
 
     valid_ids = {menu["id"] for menu in CATALOG["menus"]}
+    menu_names = {menu["id"]: menu["name"] for menu in CATALOG["menus"]}
     recommended = [menu_id for menu_id in request.context.last_recommended_menu_ids if menu_id in valid_ids]
     for step in plan.steps:
+        if step.kind == "confirm_order" and has_change and request.context.cart.get("stage") == "final_confirm":
+            continue
         if step.kind in {"information", "recommend"}:
             question = step.text
             cart_lines = request.context.cart.get("lines", [])
@@ -289,16 +309,33 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 menu_ids.extend(ordered)
                 if ordered:
                     next_action = "choose_menu"
-                if result.get("status") == "partial" and not ordered:
-                    # 검증되지 않은 추천 카드를 주문 가능한 메뉴로 노출하지 않는다.
-                    result_choices = [choice for choice in result_choices if choice.source_id not in valid_ids]
+                    choice_by_id = {
+                        choice.value if choice.field == "menu_group_id" else choice.source_id: choice
+                        for choice in result_choices
+                        if (choice.value if choice.field == "menu_group_id" else choice.source_id) in ordered
+                    }
+                    non_menu_choices = [
+                        choice for choice in result_choices
+                        if choice.source_id not in valid_ids and choice.field != "menu_group_id"
+                    ]
+                    result_choices = [
+                        choice_by_id[menu_id]
+                        for menu_id in ordered
+                        if menu_id in choice_by_id
+                    ] + non_menu_choices
+                else:
+                    result_choices = [
+                        choice
+                        for choice in result_choices
+                        if choice.field != "menu_group_id" and choice.source_id not in valid_ids
+                    ]
             else:
                 menu_ids.extend(result.get("related_menu_ids", []))
             choices.extend(result_choices)
             evidence_ids.extend(result.get("evidence_document_ids", []))
             status = result.get("status", status)
             result_next_action = result.get("next_action")
-            if step.kind == "recommend" and result.get("status") == "partial" and not ordered and result_next_action == "choose_menu":
+            if step.kind == "recommend" and not ordered and result_next_action == "choose_menu":
                 result_next_action = None
             next_action = next_action or result_next_action
             resume_prompt = result.get("resume_prompt")
@@ -310,8 +347,55 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
             if not last_menu:
                 mentions = _menu_mentions(step.text)
                 last_menu = _menu_id(mentions[-1][2]) if mentions else None
+        elif step.kind == "answer_pending":
+            pending = request.context.pending
+            draft = pending.action if pending and pending.kind == "temperature" else None
+            if (draft and draft.get("type") == "add_item" and draft.get("menu_id") in valid_ids
+                    and step.temperature):
+                actions.append({**draft, "temperature": step.temperature, "pending_resolution": True})
+            else:
+                answers.append("진행 중인 온도 질문을 확인하기 어려워요. 메뉴와 온도를 다시 알려 주세요.")
+                status = "partial" if actions else "needs_clarification"
         elif step.kind in {"add", "update_option", "update_quantity", "remove", "replace",
                            "show_cart", "clear_cart", "finish_ordering", "confirm_order", "set_dine_option"}:
+            if step.kind == "add" and not _menu_id(step.menu_term) and step.ordinal is None:
+                candidates = _menu_candidates(step.menu_term)
+                if len(candidates) > 1:
+                    answers.append(f"어떤 {step.menu_term} 메뉴를 말씀하시는 건가요? 아래에서 골라 주세요.")
+                    choices.extend(RagChoice(field="menu_group_id", value=menu["id"],
+                                             label=menu["name"], source_id=menu["id"])
+                                   for menu in candidates)
+                    menu_ids.extend(menu["id"] for menu in candidates)
+                    status = "partial" if actions else "needs_clarification"
+                    continue
+                if step.menu_term and not _suggest_menu(step.menu_term):
+                    # 판매하지 않는 메뉴의 대안 검색은 기존 RAG가 맡는다. 여기서는
+                    # 검증된 판매 메뉴 ID만 선택지로 바꾸고 주문 액션은 만들지 않는다.
+                    result = rag.ask(
+                        f"{step.menu_term} 메뉴를 주문하려고 해요. 판매하지 않는다면 대안 메뉴를 알려 주세요.",
+                        prior_conditions=request.context.prior_conditions,
+                        recent_history=[row.model_dump() for row in request.history[-6:]],
+                    )
+                    alternative_ids = list(dict.fromkeys(
+                        menu_id for menu_id in (result.get("related_menu_ids") or [])
+                        if menu_id in valid_ids
+                    ))[:3]
+                    prefix = f"'{step.menu_term}'은(는) 판매 메뉴에 없어 담지 않았어요."
+                    if alternative_ids:
+                        names = ", ".join(menu_names[menu_id] for menu_id in alternative_ids)
+                        answers.append(f"{prefix} 대신 {names} 중에서 골라 주세요.")
+                        if result.get("answer"):
+                            answers.append(str(result["answer"]))
+                            evidence_ids.extend(result.get("evidence_document_ids", []))
+                        choices.extend(RagChoice(field="menu_group_id", value=menu_id,
+                                                 label=menu_names[menu_id], source_id=menu_id)
+                                       for menu_id in alternative_ids)
+                        menu_ids.extend(alternative_ids)
+                    else:
+                        answers.append(f"{prefix} 제안할 대안도 찾지 못했어요. 다른 메뉴를 알려 주세요.")
+                    status = "partial" if actions else "needs_clarification" if alternative_ids else "not_found"
+                    unavailable_handled = True
+                    continue
             action, problem, suggestion = _action(step, request.context.cart, last_menu, recommended)
             if action:
                 actions.append(action)
@@ -343,7 +427,9 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
         status = "needs_clarification"
 
     pending_question = request.context.cart.get("pending_question")
-    if pending_question and not actions and all(step.kind in {"information", "recommend"} for step in plan.steps):
+    if pending_question and not actions and (
+        unavailable_handled or all(step.kind in {"information", "recommend"} for step in plan.steps)
+    ):
         next_action = "resume_pending_question"
         resume_prompt = pending_question
 

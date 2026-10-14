@@ -29,7 +29,7 @@ class RecommendationRAG:
         names = ["초코라떼", "카페모카"] if first else ["딸기라떼", "바닐라라떼"]
         return {
             "answer": f"{names[0]}, {names[1]}를 추천해요.",
-            "status": "ok", "related_menu_ids": sorted(ids), "evidence_document_ids": [],
+            "status": "ok", "related_menu_ids": ids, "evidence_document_ids": [],
             "choices": [{"field": "menu_group_id", "value": menu_id, "label": name, "source_id": menu_id}
                         for menu_id, name in zip(ids, names)],
             "applied_conditions": prior_conditions or {"required_sweetness_level": "높음"},
@@ -42,6 +42,31 @@ class PartialRecommendationRAG:
             "answer": "추천 정보를 확인하기 어려워요.", "status": "partial",
             "related_menu_ids": [], "evidence_document_ids": [],
             "choices": [{"field": None, "value": "초코라떼", "label": "초코라떼", "source_id": "MENU-008"}],
+            "next_action": "choose_menu",
+        }
+
+
+class NoCandidateRecommendationRAG:
+    def ask(self, question, *, prior_conditions=None, recent_history=None):
+        return {
+            "answer": "조건에 맞는 메뉴를 찾지 못했어요.", "status": "no_candidates",
+            "related_menu_ids": [], "evidence_document_ids": [],
+            "choices": [{"field": "menu_group_id", "value": "MENU-008", "label": "초코라떼", "source_id": None}],
+            "next_action": "choose_menu",
+        }
+
+
+class FallbackAlternativeRAG:
+    def __init__(self, ids):
+        self.ids = ids
+        self.questions = []
+
+    def ask(self, question, *, prior_conditions=None, recent_history=None):
+        self.questions.append(question)
+        return {
+            "answer": "[시험 RAG] 비슷한 판매 메뉴를 찾았어요.", "status": "ok",
+            "choices": [{"field": "menu_group_id", "value": "NOT-SOLD", "label": "없는 메뉴", "source_id": "NOT-SOLD"}],
+            "related_menu_ids": self.ids, "evidence_document_ids": ["TEST-ALT"],
             "next_action": "choose_menu",
         }
 
@@ -68,6 +93,23 @@ class FixedPlanner:
             TurnStep(kind="add", text=message, menu_term="아이스 아메리카노", temperature="ICE"),
             TurnStep(kind="add", text=message, menu_term="우주커피"),
         ])
+
+
+class QualifiedConfirmationPlanner:
+    def plan(self, message, context):
+        return DialoguePlan(steps=[
+            TurnStep(kind="confirm_order", text="네"),
+            TurnStep(kind="add", text="쿠키도 추가요", menu_term="쿠키"),
+        ])
+
+
+def pending_latte(message):
+    body = request(message)
+    body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
+    body["context"]["pending"] = {
+        "kind": "temperature", "action": {"type": "add_item", "menu_id": "MENU-002"},
+    }
+    return body
 
 
 class DialogueTests(unittest.TestCase):
@@ -130,6 +172,53 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual(result["status"], "partial")
         self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-001", "temperature": "ICE"}])
         self.assertIn("우주커피", result["answer"])
+
+    def test_registered_unavailable_menu_uses_mock_rag_rule_without_ordering(self):
+        with TestClient(create_app()) as client:
+            result = client.post("/api/chat", json=request("브라우니 주세요")).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["related_menu_ids"], ["MENU-030", "MENU-032"])
+        self.assertEqual([choice["value"] for choice in result["choices"]], result["related_menu_ids"])
+        self.assertIn("개발·시험용 가짜 RAG", result["answer"])
+        self.assertIsNone(result["next_action"])
+
+    def test_ruleless_unavailable_menu_uses_rag_candidates_but_only_sold_three(self):
+        rag = FallbackAlternativeRAG(["NOT-SOLD", "MENU-030", "MENU-032", "MENU-031", "MENU-028", "MENU-030"])
+        with TestClient(create_app(rag)) as client:
+            result = client.post("/api/chat", json=request("피자 주세요")).json()
+        self.assertEqual(rag.questions, ["피자 메뉴를 주문하려고 해요. 판매하지 않는다면 대안 메뉴를 알려 주세요."])
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["related_menu_ids"], ["MENU-030", "MENU-032", "MENU-031"])
+        self.assertEqual([choice["value"] for choice in result["choices"]], result["related_menu_ids"])
+        self.assertIsNone(result["next_action"])
+
+    def test_unavailable_menu_without_alternatives_is_not_ordered(self):
+        with TestClient(create_app()) as client:
+            result = client.post("/api/chat", json=request("피자 주세요")).json()
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["related_menu_ids"], [])
+        self.assertEqual(result["choices"], [])
+        self.assertNotIn("cart_actions", result)
+
+    def test_unavailable_during_pending_temperature_preserves_resume(self):
+        with TestClient(create_app()) as client:
+            result = client.post("/api/chat", json=pending_latte("브라우니 주세요")).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["related_menu_ids"], ["MENU-030", "MENU-032"])
+        self.assertEqual(result["next_action"], "resume_pending_question")
+        self.assertEqual(result["resume_prompt"], "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?")
+
+    def test_unavailable_menu_only_blocks_its_own_part_of_multi_order(self):
+        with TestClient(create_app()) as client:
+            result = client.post("/api/chat", json=request("아이스 아메리카노랑 브라우니 주세요")).json()
+        self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-001", "temperature": "ICE"}])
+        self.assertEqual(result["related_menu_ids"], ["MENU-030", "MENU-032"])
+        self.assertEqual(result["status"], "partial")
+
+    def test_typo_confirmation_still_avoids_rag_alternatives(self):
+        result = self.chat("바닐라라테 주세요")
+        self.assertEqual(result["next_action"], "confirm_menu")
+        self.assertEqual(self.rag.questions, [])
 
     def test_injected_planner_uses_same_validation(self):
         with TestClient(create_app(self.rag, FixedPlanner())) as client:
@@ -216,6 +305,34 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual(result["next_action"], "resume_pending_question")
         self.assertEqual(result["resume_prompt"], body["context"]["cart"]["pending_question"])
 
+    def test_pending_temperature_and_new_menu_are_separate_actions(self):
+        result = self.client.post("/api/chat", json=pending_latte("아이스요, 치즈케이크도 주세요")).json()
+        self.assertEqual(result["cart_actions"], [
+            {"type": "add_item", "menu_id": "MENU-002", "temperature": "ICE", "pending_resolution": True},
+            {"type": "add_item", "menu_id": "MENU-028"},
+        ])
+
+    def test_new_menu_without_temperature_answer_does_not_resolve_pending(self):
+        result = self.client.post("/api/chat", json=pending_latte("치즈케이크도 주세요")).json()
+        self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-028"}])
+
+    def test_qualified_final_confirmation_asks_which_cookie(self):
+        body = request("네, 그런데 쿠키도 추가요", [LATTE_LINE])
+        body["context"]["cart"]["stage"] = "final_confirm"
+        result = self.client.post("/api/chat", json=body).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["status"], "needs_clarification")
+        self.assertEqual([choice["value"] for choice in result["choices"]], ["MENU-026", "MENU-031", "MENU-032"])
+        self.assertIsNone(result["next_action"])
+
+    def test_qualified_confirmation_ignores_incorrect_confirm_step(self):
+        body = request("네, 그런데 쿠키도 추가요", [LATTE_LINE])
+        body["context"]["cart"]["stage"] = "final_confirm"
+        with TestClient(create_app(self.rag, QualifiedConfirmationPlanner())) as client:
+            result = client.post("/api/chat", json=body).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["status"], "needs_clarification")
+
     def test_pending_menu_information_uses_menu_name_and_resumes(self):
         body = request("카페인은요?")
         body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
@@ -242,10 +359,27 @@ class DialogueTests(unittest.TestCase):
             self.assertEqual(rag.conditions[-1]["excluded_menu_ids"], ["MENU-008", "MENU-006"])
             self.assertEqual(rag.conditions[-1]["required_sweetness_level"], "높음")
 
+    def test_second_recommendation_uses_related_id_order(self):
+        rag = RecommendationRAG()
+        with TestClient(create_app(rag)) as client:
+            first = client.post("/api/chat", json=request("달콤한 음료 추천해 주세요")).json()
+            choose = request("두 번째 걸로 주세요")
+            choose["context"]["last_recommended_menu_ids"] = first["related_menu_ids"]
+            result = client.post("/api/chat", json=choose).json()
+        self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-006"}])
+
     def test_partial_recommendation_does_not_offer_unverified_menu_card(self):
         with TestClient(create_app(PartialRecommendationRAG())) as client:
             result = client.post("/api/chat", json=request("달달한 음료 추천해 줘")).json()
         self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["related_menu_ids"], [])
+        self.assertEqual(result["choices"], [])
+        self.assertIsNone(result["next_action"])
+
+    def test_no_candidate_recommendation_does_not_offer_stale_menu_card(self):
+        with TestClient(create_app(NoCandidateRecommendationRAG())) as client:
+            result = client.post("/api/chat", json=request("달달한 음료 추천해 줘")).json()
+        self.assertEqual(result["status"], "no_candidates")
         self.assertEqual(result["related_menu_ids"], [])
         self.assertEqual(result["choices"], [])
         self.assertIsNone(result["next_action"])

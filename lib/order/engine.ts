@@ -57,6 +57,8 @@ export function greetingReply(): KioskReply {
 export interface EngineOptions {
   /** 모의 주문번호 생성기. 테스트에서 고정값을 넣는다 */
   makeOrderNumber?: () => string;
+  /** 보류 주문을 잠시 제쳐 두고 새 액션을 실행할 때 중간 단계 안내를 생략한다. */
+  suppressStagePrompt?: boolean;
 }
 
 interface Ctx {
@@ -106,7 +108,7 @@ function temperatureChoices(action: AddAction): Choice[] {
     const variant = findVariant(menu, temperature);
     return {
       label: `${temperature === "HOT" ? "따뜻하게" : "아이스"}${variant ? ` ${won(variant.price)}` : ""}`,
-      action: { ...action, temperature },
+      action: { ...action, temperature, pending_resolution: true },
     };
   });
 }
@@ -677,10 +679,10 @@ function resolvesPending(state: OrderState, action: EngineAction): boolean {
   const pending = state.pending;
   if (!pending) return false;
   if (action.type === "cancel_pending") return false;
-  if (pending.kind === "temperature") return action.type === "add_item" && action.menu_id === pending.action.menu_id;
+  if (pending.kind === "temperature") return action.type === "add_item" && action.pending_resolution === true && action.menu_id === pending.action.menu_id && !!action.temperature;
   if (pending.kind === "quantity_confirm") return action.type === pending.action.type && "confirmed" in action && !!action.confirmed;
-  if (pending.kind === "clear_confirm") return action.type === "clear_cart";
-  return action.type === pending.action.type && "target" in action && !!action.target.line_id;
+  if (pending.kind === "clear_confirm") return action.type === "clear_cart" && !!action.confirmed;
+  return action.type === pending.action.type && "target" in action && !!action.target.line_id && pending.lineIds.includes(action.target.line_id);
 }
 
 export interface EngineResult {
@@ -693,6 +695,41 @@ export interface EngineResult {
  * 나머지는 state.queued에 보관했다가 답을 받은 뒤 이어서 처리한다.
  */
 export function runActions(prev: OrderState, actions: EngineAction[], opts: EngineOptions = {}): EngineResult {
+  if (prev.pending && actions.length && !resolvesPending(prev, actions[0]) && actions[0].type !== "cancel_pending") {
+    const immediate = actions.every((action) =>
+      ["add_item", "update_item", "remove_item", "replace_menu", "set_dine_option", "show_cart"].includes(action.type),
+    );
+    if (immediate) {
+      // 새 요청은 먼저 시도하되 기존 질문과 대기 액션은 별도로 보존한다.
+      const unpaused = { ...structuredClone(prev), pending: null, queued: [] };
+      const attempted = runActions(unpaused, actions, { ...opts, suppressStagePrompt: true });
+      if (!attempted.state.pending) {
+        const state = { ...attempted.state, pending: structuredClone(prev.pending), queued: structuredClone(prev.queued) };
+        const prompt = stagePrompt(state);
+        return {
+          state,
+          reply: {
+            text: [attempted.reply.text, prompt.text].filter(Boolean).join("\n"),
+            choices: dedupeChoices([...attempted.reply.choices, ...prompt.choices]),
+            menuIds: attempted.reply.menuIds,
+          },
+        };
+      }
+      if (prev.pending.kind === "temperature" && !prev.pending.replaceLineId) {
+        // 새 요청에도 확인이 필요하면 그 확인을 먼저 마치고 원래 온도를 다시 묻는다.
+        attempted.state.queued = [
+          ...attempted.state.queued,
+          structuredClone(prev.pending.action),
+          ...structuredClone(prev.queued),
+        ];
+        return attempted;
+      }
+    }
+    // 교체 중 온도 확인처럼 재구성할 수 없는 보류 요청은 액션을 보관한다.
+    const state = structuredClone(prev);
+    state.queued = [...actions.filter((action): action is CartAction => action.type !== "cancel_pending"), ...state.queued];
+    return { state, reply: stagePrompt(state) };
+  }
   const s: OrderState = structuredClone(prev);
   const ctx: Ctx = {
     texts: [],
@@ -708,7 +745,7 @@ export function runActions(prev: OrderState, actions: EngineAction[], opts: Engi
   if (s.pending && queue.length) {
     const resolution = resolvesPending(s, queue[0]);
     const pendingReplace = s.pending.kind === "temperature" ? s.pending.replaceLineId : undefined;
-    if (resolution) queue = [...queue, ...s.queued];
+    if (resolution) queue = [queue[0], ...s.queued, ...queue.slice(1)];
     s.pending = null;
     s.queued = [];
     if (resolution && pendingReplace && queue[0].type === "add_item") {
@@ -724,7 +761,7 @@ export function runActions(prev: OrderState, actions: EngineAction[], opts: Engi
   }
   if (s.pending) s.queued = queue as CartAction[];
 
-  if (!s.pending && !ctx.promptDone) {
+  if (!s.pending && !ctx.promptDone && !opts.suppressStagePrompt) {
     if (ctx.changed) {
       if (s.lines.length === 0) {
         // 공통 규칙 5: 장바구니를 모두 비우면 인사로

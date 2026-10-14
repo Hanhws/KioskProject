@@ -98,13 +98,16 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
 - 여러 요청이 함께 있으면 mixed로 표시하되 메뉴 관련 내용을 버리지 않습니다.
 - 메뉴 목록을 묻는 질문은 list_menu=true로 두고, 음료·디저트나 실제 category가 있으면 list_menu_type/list_category에 기록합니다.
 - 특정 메뉴에 가능한 옵션 전체를 묻는 질문은 list_options=true로 둡니다.
-- '달콤한 것'처럼 HTI에서 당도 단계가 분명한 추천은 required_sweetness_level에 기록합니다.
+- '달달한', '달콤한', '단 음료', '당 충전할 만한' 처럼 당도 단계가 분명한 추천은
+  required_sweetness_level='높음'으로 기록하고 같은 표현을 preferred_terms에 중복해 넣지 않습니다.
+- '너무 단 건 싫어', '달지 않은'은 당도 '높음'으로 해석하지 않습니다.
 - '과일 들어간 거', '과일 메뉴'처럼 재료나 맛을 기준으로 메뉴를 찾는 요청은
   recommend로 분류하고 핵심 표현인 '과일'을 preferred_terms에 기록합니다.
 - '커피 말고'는 required_type='음료', required_coffee_strength='없음'으로 기록합니다. 카페인 0이라고 해석하지 않습니다.
 - 더운 날·저녁처럼 상황 추천이면 실제 표현을 required_situations에 기록합니다.
 - '다른 추천'에서는 이전 조건을 유지하고 이전 추천 메뉴 ID를 excluded_menu_ids에 둡니다.
-- 비교 기준이 없으면 requested_fields에 맛·가격·커피 진하기를 넣습니다.
+- intent='compare'인데 비교 기준이 없을 때만 requested_fields에 맛·가격·커피 진하기를 넣습니다.
+  일반 추천 요청에는 사용자가 직접 물은 항목만 requested_fields에 넣습니다.
 - 대체 표에 없는 판매하지 않는 메뉴도 unavailable_term에 요청 이름을 두고, 일반적으로 추정한 맛·종류 표현은 unavailable_profile_terms에 둡니다. 이 표현은 사실 확정이 아니라 후보 검색용입니다.
 - 별칭에 없는 오타처럼 보이는 표현도 임의 메뉴로 확정하지 말고 menu_terms에 원문 그대로 둡니다.
 - 사용자가 결정을 못 한 횟수와 멈춘 질문이 이전 조건에 있으면 clarification_count와 pending_question에 유지합니다.""",

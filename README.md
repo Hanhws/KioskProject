@@ -92,4 +92,4 @@ CSV가 바뀌면 `data/megacoffee_rag_enriched/`를 갱신한 뒤 `npm run catal
 
 - 서버는 장바구니를 직접 바꾸지 않고 응답에 `cart_actions`를 담아 지시합니다. 형식은 `docs/API.md`에 있습니다.
 - 프론트가 옵션 적용 가능 여부·최대 횟수·추가금을 다시 검사하므로, 서버가 틀린 지시를 보내도 장바구니가 잘못되지 않습니다.
-- `api/index.py`의 `route_message()`는 정보 질문을 RAG에 보내고 자연어 주문·수정·확인 요청을 기존 `cart_actions`로 변환합니다. 실제 모드에서는 `api/dialogue.py`의 구조화 LLM 계획을 사용합니다. 추천 순서는 RAG 선택지 또는 답변에서 확인 가능한 경우에만 후속 선택에 쓰며, 보류 중 정보 질문은 원래 질문으로 복귀합니다. 실제 LLM·RAG의 후속 대화 품질과 보류 중 새 주문의 우선순위는 아직 검증·결정되지 않았습니다. 프론트는 `history`, `cart`, `pending_question`, `last_recommended_menu_ids`, `prior_conditions`를 매 턴 보냅니다.
+- `api/index.py`의 `route_message()`는 정보 질문을 RAG에 보내고 자연어 주문·수정·확인 요청을 기존 `cart_actions`로 변환합니다. 실제 모드에서는 `api/dialogue.py`의 구조화 LLM 계획을 사용합니다. 추천 순서는 RAG 선택지 또는 답변에서 확인 가능한 경우에만 후속 선택에 쓰며, 보류 중 정보 질문은 원래 질문으로 복귀합니다. 보류 중 독립된 새 주문은 먼저 처리하고 기존 온도를 다시 묻습니다. 실제 LLM·RAG의 후속 대화 품질은 별도 검증이 필요합니다. 프론트는 `history`, `cart`, 구조화된 `pending`, `pending_question`, `last_recommended_menu_ids`, `prior_conditions`를 매 턴 보냅니다.

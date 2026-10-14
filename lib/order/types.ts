@@ -95,6 +95,8 @@ export type CartAction =
       temperature?: Temperature | null;
       options?: OptionSelection;
       quantity?: number;
+      /** 현재 보류 중인 온도 질문에 대한 답일 때만 true */
+      pending_resolution?: boolean;
       /** 10잔 이상 수량 확인을 이미 받았으면 true */
       confirmed?: boolean;
     }

@@ -77,7 +77,7 @@ export function mapRagChoices(choices: RagChoice[], order: OrderState): Choice[]
     }
     if (choice.field === "temperature" && (choice.value === "HOT" || choice.value === "ICE")) {
       if (order.pending?.kind === "temperature") {
-        return [{ label: choice.label, action: { ...order.pending.action, temperature: choice.value } }];
+        return [{ label: choice.label, action: { ...order.pending.action, temperature: choice.value, pending_resolution: true } }];
       }
     }
     return [{ label: choice.label, action: { type: "send", text: choice.label } }];
@@ -180,12 +180,13 @@ export function kioskReducer(state: KioskState, event: KioskEvent): KioskState {
 export function confirmSuggestedMenu(state: KioskState, text: string): EngineAction[] | null {
   const menuId = state.pendingMenuConfirmation;
   if (!menuId || !getMenu(menuId)) return null;
-  return /^(네|예|맞아요|맞습니다|그거요|그걸로|응)(?:[,，.!\s]|$)/.test(text.trim())
+  return /^(?:네|예|맞아요|맞습니다|그거요|그걸로|응|네,\s*맞아요)(?:[.!])?$/.test(text.trim())
     ? [{ type: "add_item", menu_id: menuId }]
     : null;
 }
 
 export function buildChatRequest(state: KioskState, message: string): ChatRequest {
+  const pending = state.order.pending;
   const history = state.messages
     .filter((m) => m.text)
     .slice(-10)
@@ -195,6 +196,11 @@ export function buildChatRequest(state: KioskState, message: string): ChatReques
     history,
     context: {
       cart: { ...cartSnapshot(state.order), pending_question: stagePromptText(state.order) },
+      pending: pending ? {
+        kind: pending.kind,
+        ...("action" in pending ? { action: pending.action } : {}),
+        ...(pending.kind === "target" ? { line_ids: pending.lineIds } : {}),
+      } : null,
       last_recommended_menu_ids: state.lastRecommended,
       prior_conditions: state.priorConditions,
     },
