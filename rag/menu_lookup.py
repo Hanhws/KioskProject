@@ -94,6 +94,9 @@ def variants_for_menu_id(data: RagData, menu_id: str) -> list[dict[str, Any]]:
 
 def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str]:
     candidates = []
+    preferred_terms = [
+        normalize_text(term) for term in plan.preferred_terms if normalize_text(term)
+    ]
     for menu_id, menu in data.catalog_by_id.items():
         if menu_id in plan.excluded_menu_ids:
             continue
@@ -111,6 +114,17 @@ def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str
             and menu.get("coffee_strength") != plan.required_coffee_strength
         ):
             continue
+        if preferred_terms:
+            searchable = normalize_text(" ".join(
+                str(menu.get(field) or "")
+                for field in [
+                    "category", "menu_name", "aliases", "flavor_tags",
+                    "texture", "recommended_for", "recommended_situations",
+                    "rich_description",
+                ]
+            ))
+            if not any(term in searchable for term in preferred_terms):
+                continue
         if plan.required_situations:
             situations = {
                 normalize_text(value)

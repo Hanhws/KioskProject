@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 Intent = Literal[
     "menu_info", "compare", "recommend", "option", "pairing",
     "unavailable", "policy", "unrelated", "mixed", "ambiguous", "general",
+    "order",
 ]
 
 
@@ -31,6 +32,8 @@ class QueryPlan(BaseModel):
     excluded_menu_ids: list[str] = Field(default_factory=list)
     option_terms: list[str] = Field(default_factory=list)
     option_quantity: Optional[int] = None
+    menu_quantity: Optional[int] = None
+    fulfillment: Optional[Literal["매장", "포장"]] = None
     list_menu: bool = False
     list_menu_type: Optional[Literal["음료", "디저트"]] = None
     list_category: Optional[str] = None
@@ -79,15 +82,25 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
         """당신은 카페 RAG 검색 준비 도우미입니다. 답변을 만들지 말고 질문을 구조화하세요.
 - 메뉴명·별칭·옵션 표현은 사용자가 말한 그대로 menu_terms/option_terms에 둡니다.
 - 옵션 수량을 말했으면 option_quantity에 숫자로 기록합니다. 수량을 말하지 않았으면 만들지 않습니다.
+- 메뉴 주문 수량은 menu_quantity에 기록합니다. 옵션 수량과 메뉴 수량을 혼동하지 않습니다.
+- 매장 이용 또는 포장을 말했으면 fulfillment에 각각 '매장' 또는 '포장'으로 기록합니다.
+- 메뉴·온도·수량·매장/포장처럼 주문 내용을 말하면 intent='order'로 분류합니다.
 - '카페인 적게', '덜 달게'처럼 숫자 기준이 없는 표현에 임의 수치를 만들지 말고 ambiguous_conditions에 둡니다.
 - 사용자가 명시한 숫자 상한만 max_price_krw 또는 max_caffeine_mg에 둡니다.
 - 한 주문을 동시에 HOT과 ICE로 지정한 경우만 충돌입니다. HOT·ICE 가격이나 정보를 모두 묻는 질문은 충돌로 기록하지 않습니다.
-- 이전 조건은 새 질문이 바꾼 항목만 덮어쓰고 나머지는 유지합니다.
+- 이전 조건은 새 질문이 바꾼 항목만 덮어쓰고 나머지는 유지합니다. 단,
+  requested_fields는 누적 조건이 아니므로 이전 조건에서 자동으로 복사하지 않습니다.
+- requested_fields에는 현재 질문에서 직접 요청한 정보만 기록합니다.
+  주문·수량·온도·매장/포장 확인에는 requested_fields를 비워 둡니다.
+- '그럼 아이스는?', '그건?', '둘 중에는?'처럼 현재 질문만으로 조회 항목이
+  생략된 후속 질문일 때만 이전 조회 항목과 최근 대화를 참고해 requested_fields를 유지합니다.
 - 피자처럼 카페 메뉴로 물어본 없는 품목은 unavailable, 날씨·주식은 unrelated로 구분합니다.
 - 여러 요청이 함께 있으면 mixed로 표시하되 메뉴 관련 내용을 버리지 않습니다.
 - 메뉴 목록을 묻는 질문은 list_menu=true로 두고, 음료·디저트나 실제 category가 있으면 list_menu_type/list_category에 기록합니다.
 - 특정 메뉴에 가능한 옵션 전체를 묻는 질문은 list_options=true로 둡니다.
 - '달콤한 것'처럼 HTI에서 당도 단계가 분명한 추천은 required_sweetness_level에 기록합니다.
+- '과일 들어간 거', '과일 메뉴'처럼 재료나 맛을 기준으로 메뉴를 찾는 요청은
+  recommend로 분류하고 핵심 표현인 '과일'을 preferred_terms에 기록합니다.
 - '커피 말고'는 required_type='음료', required_coffee_strength='없음'으로 기록합니다. 카페인 0이라고 해석하지 않습니다.
 - 더운 날·저녁처럼 상황 추천이면 실제 표현을 required_situations에 기록합니다.
 - '다른 추천'에서는 이전 조건을 유지하고 이전 추천 메뉴 ID를 excluded_menu_ids에 둡니다.
@@ -98,7 +111,8 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
     ),
     (
         "human",
-        "사용자 질문: {question}\n이전 조건: {prior_conditions}\n"
+        "사용자 질문: {question}\n이전 누적 조건: {prior_conditions}\n"
+        "이전 조회 항목: {previous_requested_fields}\n최근 대화: {recent_history}\n"
         "실제 메뉴 type: {types}\n실제 category: {categories}",
     ),
 ])
@@ -112,6 +126,40 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
 
 답변 규칙:
 - 쉬운 존댓말로 질문한 내용부터 직접 답합니다.
+- 현재 질문에서 요청한 내용만 답하고, 메뉴 데이터에 있다는 이유만으로 맛·가격·용량·
+  카페인·영양 정보를 덧붙이지 않습니다.
+- intent='order'이면 메뉴명, 온도, 수량, 매장/포장 여부와 주문 확인에 필요한 가격만
+  간단히 안내합니다. 사용자가 직접 묻지 않은 맛·용량·카페인·영양·알레르기는 말하지 않습니다.
+- '두 잔', '아이스로', '포장이요'처럼 짧은 후속 답변에는 새로 확정된 내용과 필요한
+  주문 요약만 답하고 이전 메뉴 설명을 반복하지 않습니다.
+- menu_info에서는 requested_fields에 있는 항목만 답합니다. 단, '설명'을 요청한 경우에는
+  메뉴의 핵심 맛과 특징을 간단히 설명할 수 있지만 영양·용량·카페인은 묻지 않으면 제외합니다.
+- 조건에 맞는 메뉴를 처음 추천하고 requested_fields가 비어 있으면 후보 메뉴명만
+  3~4개 안내하고, 맛·가격·온도·용량·영양 설명은 붙이지 않습니다.
+  마지막에는 어떤 메뉴가 궁금한지만 짧게 묻습니다.
+- 추천 질문에 가격·맛·카페인처럼 requested_fields가 있거나 사용자가 특정 메뉴의
+  상세 설명을 요청한 경우에만 그 요청 항목을 안내합니다.
+- 답변을 만드는 내부 과정을 사용자에게 말하지 않습니다. '자료', '근거', '검증',
+  '검색 문서', 'CSV', '필터', '후보 ID', '내부 조건', '조건 충돌' 같은 표현을
+  답변에 사용하지 않습니다.
+- 선택할 수 없는 조합은 내부 판정 결과를 설명하지 말고 손님이 이해하기 쉬운
+  주문 규칙으로 안내합니다. 예: HOT과 ICE를 함께 요청하면
+  '한 잔에는 따뜻한 것과 아이스를 동시에 선택할 수 없어요. 어느 쪽으로 드릴까요?'
+  라고 답합니다.
+- 질문하지 않은 정보가 비어 있다는 사실은 먼저 언급하지 않습니다. 답변에 꼭 필요한
+  정보가 없을 때만 '해당 정보가 없어 안내해 드리지 못해 죄송해요.'라고 짧게 양해를 구합니다.
+- 정보가 없는 항목을 처리하는 규칙:
+1) 사용자가 직접 요청한 항목의 값이 없을 때만 해당 항목을 안내하기 어렵다고 답합니다.
+2) 사용자가 요청하지 않은 누락 항목은 절대 언급하지 않습니다.
+3) 일부 정보만 없으면 확인 가능한 내용부터 답하고, 요청한 누락 항목에 대해서만 짧게 양해를 구합니다.
+4) 값이 없는 항목은 claims에 기록하지 않습니다.
+
+  응답 예시:
+
+  - 사용자: "아이스 카푸치노 설명해 줘"
+  답변: 맛과 가격 등 확인되는 내용만 자연스럽게 설명합니다.
+  사용자가 묻지 않은 칼로리·영양 정보의 누락은 언급하지 않습니다.
+
 - 가격·용량·영양·카페인은 상세 데이터의 값만 사용하고 온도별 차이를 구분합니다.
 - 빈 값은 추측하지 않습니다. 빈 알레르기는 알레르기 없음이 아닙니다.
 - 디카페인 가능은 카페인 0mg이 아니며, 옵션 변경 뒤 수치를 추정하지 않습니다.
@@ -126,7 +174,9 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
 - 팀 정의 자료를 브랜드 공식 정책이라고 표현하지 않습니다.
 - evidence_document_ids에는 실제로 답변에 사용한 문서 ID만 넣습니다.
 - related_menu_ids에는 실제 메뉴 ID만 넣습니다.
-- 가격·용량·영양·카페인·추가금처럼 행과 열로 확인되는 사실은 claims에 CSV 열 이름 field, 값 value, 실제 행 ID source_id를 기록합니다. 상세 수치는 MEGA-... variant_id, 옵션은 OPT-... option_id를 사용합니다.
+- 답변에 실제로 적은 가격·용량·영양·카페인·추가금만 claims에 CSV 열 이름 field,
+  값 value, 실제 행 ID source_id를 기록합니다. 답변에서 생략한 정보는 claims에도 넣지 않습니다.
+  상세 수치는 MEGA-... variant_id, 옵션은 OPT-... option_id를 사용합니다.
 - menu_listing의 mode가 categories이면 메뉴 전체를 나열하지 말고 실제 분류를 먼저 보여 주고 하나를 고르게 합니다.
 - menu_listing의 mode가 grouped_menus이면 제공된 분류와 메뉴만 안내합니다.
 - 추천 후보는 recommendation_candidates_after_required_filters 안에서 3~4개까지만 고릅니다. 후보가 3개보다 적으면 있는 후보만 안내합니다.
@@ -152,16 +202,16 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
 질문 계획:
 {plan}
 
-메뉴 해석 상태:
+사용자 요청 정리:
 {resolved}
 
-의미 검색 + 정확 연결 문서:
+관련 메뉴 안내 정보:
 {retrieved_context}
 
-전체 CSV에서 검증한 정확 사실:
+정확한 메뉴 정보:
 {exact_facts}
 
-항상 적용할 공통 정책:
+응대 지침:
 {policies}""",
     ),
 ])

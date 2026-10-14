@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from copy import deepcopy
 from typing import Any, Iterable, Optional
 
 from langchain_openai import ChatOpenAI
@@ -32,6 +33,8 @@ def plan_question(
     data: RagData,
     config: RagConfig,
     prior_conditions: Optional[dict[str, Any]] = None,
+    previous_requested_fields: Optional[list[str]] = None,
+    recent_history: Optional[list[dict[str, str]]] = None,
 ) -> QueryPlan:
     planner = PLANNER_PROMPT | make_llm(config).with_structured_output(
         QueryPlan, method="json_schema"
@@ -39,6 +42,12 @@ def plan_question(
     return planner.invoke({
         "question": question,
         "prior_conditions": json.dumps(prior_conditions or {}, ensure_ascii=False),
+        "previous_requested_fields": json.dumps(
+            previous_requested_fields or [], ensure_ascii=False
+        ),
+        "recent_history": json.dumps(
+            recent_history or [], ensure_ascii=False
+        ),
         "types": sorted({menu["type"] for menu in data.tables["menu_catalog"]}),
         "categories": sorted({menu["category"] for menu in data.tables["menu_catalog"]}),
     })
@@ -179,6 +188,13 @@ def generate_rag_answer(
     data: RagData,
     config: RagConfig,
 ) -> AnswerDraft:
+    answer_exact_facts = scope_exact_facts_for_answer(plan, resolved, exact_facts)
+    answer_evidence = evidence_to_context(evidence)
+    if plan.intent == "menu_info" and plan.requested_fields and resolved.get("exact_menu_ids"):
+        # 정확한 메뉴를 특정해 한두 항목만 물은 경우에는 전체 문서를 함께 주지 않는다.
+        # 전체 문서의 가격·용량·카페인 등이 답변에 불필요하게 따라붙는 것을 막고,
+        # 아래에서 요청 항목만 남긴 정확 조회 사실을 답변 근거로 사용한다.
+        answer_evidence = "정확 조회 사실의 요청 항목만 사용하세요."
     chain = ANSWER_PROMPT | make_llm(config).with_structured_output(
         AnswerDraft, method="json_schema"
     )
@@ -186,7 +202,108 @@ def generate_rag_answer(
         "question": question,
         "plan": json.dumps(plan.model_dump(), ensure_ascii=False, indent=2),
         "resolved": json.dumps(resolved, ensure_ascii=False, indent=2),
-        "retrieved_context": evidence_to_context(evidence),
-        "exact_facts": json.dumps(exact_facts, ensure_ascii=False, indent=2),
+        "retrieved_context": answer_evidence,
+        "exact_facts": json.dumps(answer_exact_facts, ensure_ascii=False, indent=2),
         "policies": policy_context(data),
     })
+
+
+def scope_exact_facts_for_answer(
+    plan: QueryPlan,
+    resolved: dict[str, Any],
+    exact_facts: dict[str, Any],
+) -> dict[str, Any]:
+    """정확한 단일 메뉴 정보 질문에는 사용자가 요청한 필드만 LLM에 노출한다."""
+    if (
+        plan.intent != "menu_info"
+        or not plan.requested_fields
+        or not resolved.get("exact_menu_ids")
+    ):
+        return exact_facts
+
+    normalized_fields = {normalize_text(field) for field in plan.requested_fields}
+    catalog_fields = {"menu_group_id", "menu_name", "type", "category"}
+    variant_fields = {
+        "variant_id", "base_menu_name", "display_name", "temperature", "data_source",
+    }
+
+    field_aliases = {
+        "price_krw": ("가격", "price"),
+        "price_summary": ("가격", "price"),
+        "volume_ml": ("용량", "volume", "ml"),
+        "calories_kcal": ("칼로리", "calorie", "kcal"),
+        "sugar_g": ("당류", "당", "sugar"),
+        "protein_g": ("단백질", "protein"),
+        "saturated_fat_g": ("포화지방", "saturatedfat"),
+        "caffeine_mg": ("카페인", "caffeine"),
+        "sodium_mg": ("나트륨", "sodium"),
+        "cholesterol_mg": ("콜레스테롤", "cholesterol"),
+        "carbohydrate_g": ("탄수화물", "carbohydrate"),
+        "fat_g": ("지방", "fat"),
+        "trans_fat_g": ("트랜스지방", "transfat"),
+        "allergens": ("알레르기", "알러지", "allergen"),
+        "allergen_note": ("알레르기", "알러지", "allergen"),
+        "decaf_available": ("디카페인", "decaf"),
+        "size_policy": ("사이즈", "size"),
+        "available_temperatures": ("온도", "hot", "ice", "따뜻", "아이스"),
+        "short_description": ("설명", "특징", "맛", "description", "flavor"),
+        "rich_description": ("설명", "특징", "맛", "description", "flavor"),
+        "flavor_tags": ("설명", "특징", "맛", "description", "flavor"),
+        "sweetness_level": ("설명", "특징", "맛", "당도", "sweet"),
+        "coffee_strength": ("설명", "특징", "맛", "커피진하기", "strength"),
+        "acidity_level": ("설명", "특징", "맛", "산미", "acidity"),
+        "texture": ("설명", "특징", "맛", "질감", "texture"),
+    }
+    nutrition_requested = any(
+        token in field
+        for field in normalized_fields
+        for token in ("영양", "nutrition")
+    )
+    description_requested = any(
+        token in field
+        for field in normalized_fields
+        for token in ("설명", "description")
+    )
+
+    for key, aliases in field_aliases.items():
+        if any(
+            normalize_text(alias) in field or field in normalize_text(alias)
+            for field in normalized_fields
+            for alias in aliases
+        ):
+            catalog_fields.add(key)
+            variant_fields.add(key)
+    if nutrition_requested:
+        variant_fields.update({
+            "calories_kcal", "sugar_g", "protein_g", "saturated_fat_g",
+            "caffeine_mg", "sodium_mg", "cholesterol_mg", "carbohydrate_g",
+            "fat_g", "trans_fat_g",
+        })
+    if description_requested:
+        catalog_fields.update({
+            "short_description", "rich_description", "flavor_tags",
+            "sweetness_level", "coffee_strength", "acidity_level", "texture",
+            "price_summary",
+        })
+        variant_fields.add("price_krw")
+
+    scoped = deepcopy(exact_facts)
+    scoped["resolved_menus"] = [
+        {
+            "catalog": {
+                key: value
+                for key, value in item.get("catalog", {}).items()
+                if key in catalog_fields
+            },
+            "variants": [
+                {
+                    key: value
+                    for key, value in variant.items()
+                    if key in variant_fields
+                }
+                for variant in item.get("variants", [])
+            ],
+        }
+        for item in exact_facts.get("resolved_menus", [])
+    ]
+    return scoped

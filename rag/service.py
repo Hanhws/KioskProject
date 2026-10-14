@@ -29,6 +29,17 @@ from .prompts import AnswerDraft, QueryPlan
 from .retriever import retrieve_evidence, search_only, semantic_menu_candidate_ids
 
 
+def brief_recommendation_answer(menu_ids: list[str], data: RagData) -> str:
+    names = [
+        data.catalog_by_id[menu_id]["menu_name"]
+        for menu_id in menu_ids[:4]
+        if menu_id in data.catalog_by_id
+    ]
+    if not names:
+        return "조건에 맞는 메뉴를 찾지 못했어요. 다른 조건으로 말씀해 주세요."
+    return f"{', '.join(names)}가 있어요. 어떤 메뉴가 궁금하세요?"
+
+
 def validated_ui_choices(
     draft: AnswerDraft,
     plan: QueryPlan,
@@ -105,6 +116,7 @@ class CafeRAGService:
         *,
         plan: Optional[QueryPlan | dict[str, Any]] = None,
         prior_conditions: Optional[dict[str, Any]] = None,
+        recent_history: Optional[list[dict[str, str]]] = None,
         use_llm: Optional[bool] = None,
     ) -> dict[str, Any]:
         use_llm = self.config.run_llm if use_llm is None else use_llm
@@ -133,8 +145,21 @@ class CafeRAGService:
         try:
             if plan is None:
                 if use_llm:
+                    planning_conditions = dict(prior_conditions or {})
+                    previous_requested_fields = planning_conditions.pop(
+                        "requested_fields", []
+                    )
                     query_plan = plan_question(
-                        question, self.data, self.config, prior_conditions
+                        question,
+                        self.data,
+                        self.config,
+                        planning_conditions or None,
+                        previous_requested_fields=(
+                            previous_requested_fields
+                            if isinstance(previous_requested_fields, list)
+                            else []
+                        ),
+                        recent_history=(recent_history or [])[-6:],
                     )
                 else:
                     query_plan = QueryPlan()
@@ -319,10 +344,32 @@ class CafeRAGService:
             grounding_issues.append(
                 f"필수 조건 또는 대안 후보 밖의 메뉴 ID: {rejected_menu_ids}"
             )
-        if grounding_issues:
+        is_brief_recommendation = (
+            query_plan.intent == "recommend" and not query_plan.requested_fields
+        )
+        if is_brief_recommendation:
+            recommended_menu_ids = [
+                menu_id
+                for menu_id in draft.related_menu_ids
+                if menu_id in recommendation_ids
+            ]
+            if not recommended_menu_ids:
+                recommended_menu_ids = recommendation_ids
+            recommended_menu_ids = list(dict.fromkeys(recommended_menu_ids))[:4]
+            answer = brief_recommendation_answer(recommended_menu_ids, self.data)
+            status = "ok" if recommended_menu_ids else "no_candidates"
+            valid_menu_ids = recommended_menu_ids
+            valid_evidence_ids = [
+                menu_id
+                for menu_id in recommended_menu_ids
+                if menu_id in self.data.document_by_id
+            ]
+            valid_claims = []
+            grounding_issues = []
+        elif grounding_issues:
             answer = (
-                "생성된 답변에서 자료와 맞지 않거나 확인할 수 없는 내용을 발견했습니다. "
-                "근거가 확인된 조건으로 다시 질문해 주세요."
+                "일부 정보는 정확히 확인되지 않아 제외했어요. "
+                "확인된 메뉴 정보만 기준으로 다시 안내해 드릴게요."
             )
             status = "partial"
         else:
