@@ -19,11 +19,11 @@
     "max_request_tokens": 300000
   },
   "embedding_export": {
-    "path": "/Users/summer/KioskProject/rag/rag_embeddings.json",
+    "path": "/Users/chie/Documents/핀테크 과정/ai 응용/과제/키오스크 과제/KioskProject-dialogue-integration/rag/rag_embeddings.json",
     "document_count": 132,
     "vector_dimension": 1536,
-    "sha256": "c1b14f0b60759126da48e7309e5e9e7b8ee1840acdf96ace900a939c68b661c2",
-    "bytes": 4291687
+    "sha256": "f8dcea52027a526a10154749afd1fc3571d6dc98a7640a905255ff8e0765895b",
+    "bytes": 4291368
   },
   "index_action": "rebuilt"
 }

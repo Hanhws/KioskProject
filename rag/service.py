@@ -40,6 +40,19 @@ def brief_recommendation_answer(menu_ids: list[str], data: RagData) -> str:
     return f"{', '.join(names)}가 있어요. 어떤 메뉴가 궁금하세요?"
 
 
+def recommendation_choices(menu_ids: list[str], data: RagData) -> list[dict[str, Any]]:
+    return [
+        {
+            "field": "menu_group_id",
+            "value": menu_id,
+            "label": data.catalog_by_id[menu_id]["menu_name"],
+            "source_id": menu_id,
+        }
+        for menu_id in menu_ids
+        if menu_id in data.catalog_by_id
+    ]
+
+
 def validated_ui_choices(
     draft: AnswerDraft,
     plan: QueryPlan,
@@ -168,7 +181,7 @@ class CafeRAGService:
         except Exception as error:
             return self._error_result("planner_error", error)
 
-        query_plan = normalize_query_plan(query_plan, self.data)
+        query_plan = normalize_query_plan(query_plan, self.data, question)
 
         unavailable_rule = find_unavailable_rule(question, self.data)
         if not unavailable_rule and query_plan.unavailable_term:
@@ -334,10 +347,24 @@ class CafeRAGService:
         allowed_menu_ids.update(resolved["exact_menu_ids"])
         allowed_menu_ids.update(temperature_alternative_menu_ids)
         rejected_menu_ids = sorted(set(draft.related_menu_ids) - allowed_menu_ids)
-        valid_menu_ids = sorted(
-            (set(draft.related_menu_ids) & allowed_menu_ids & set(self.data.catalog_by_id))
-            | deterministic_menu_ids
+        validated_draft_menu_ids = (
+            set(draft.related_menu_ids)
+            & allowed_menu_ids
+            & set(self.data.catalog_by_id)
         )
+        if query_plan.intent == "recommend":
+            valid_menu_ids = list(dict.fromkeys([
+                *[
+                    menu_id
+                    for menu_id in draft.related_menu_ids
+                    if menu_id in validated_draft_menu_ids
+                ],
+                *sorted(deterministic_menu_ids),
+            ]))[:4]
+        else:
+            valid_menu_ids = sorted(
+                validated_draft_menu_ids | deterministic_menu_ids
+            )
         valid_choices = validated_ui_choices(draft, query_plan, exact_facts, self.data)
         valid_claims, grounding_issues = validate_answer_claims(draft.claims, self.data)
         if rejected_menu_ids:
@@ -366,15 +393,36 @@ class CafeRAGService:
             ]
             valid_claims = []
             grounding_issues = []
+            valid_choices = recommendation_choices(recommended_menu_ids, self.data)
+            next_action = "choose_menu" if recommended_menu_ids else None
         elif grounding_issues:
             answer = (
                 "일부 정보는 정확히 확인되지 않아 제외했어요. "
                 "확인된 메뉴 정보만 기준으로 다시 안내해 드릴게요."
             )
             status = "partial"
+            next_action = draft.next_action
         else:
             answer = draft.answer
             status = draft.status
+            next_action = draft.next_action
+
+        if query_plan.intent == "recommend":
+            if status == "ok" and valid_menu_ids:
+                valid_choices = recommendation_choices(valid_menu_ids, self.data)
+                next_action = "choose_menu"
+            else:
+                valid_choices = [
+                    choice
+                    for choice in valid_choices
+                    if (
+                        choice.get("value")
+                        if choice.get("field") == "menu_group_id"
+                        else choice.get("source_id")
+                    ) not in self.data.catalog_by_id
+                ]
+                if next_action == "choose_menu":
+                    next_action = None
         return {
             "answer": answer,
             "related_menu_ids": valid_menu_ids,
@@ -390,7 +438,7 @@ class CafeRAGService:
                 "status": "blocked" if grounding_issues else "verified",
                 "issues": grounding_issues,
             },
-            "next_action": draft.next_action,
+            "next_action": next_action,
             "resume_prompt": draft.resume_prompt or (
                 query_plan.pending_question
                 if query_plan.intent == "unrelated" else None

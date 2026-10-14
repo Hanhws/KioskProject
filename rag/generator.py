@@ -53,7 +53,52 @@ def plan_question(
     })
 
 
-def normalize_query_plan(plan: QueryPlan, data: RagData) -> QueryPlan:
+HIGH_SWEETNESS_PATTERNS = (
+    "달달한", "달콤한", "단거", "단음료", "당충전", "디저트같은", "엄청단",
+)
+NEGATIVE_SWEETNESS_PATTERNS = (
+    "달달하지않", "달콤하지않", "달지않", "안단", "덜단",
+    "단맛적은", "단건싫", "단거말고", "단음료말고",
+)
+EXPLICIT_RECOMMENDATION_DETAIL_PATTERNS = (
+    "가격", "얼마", "카페인", "칼로리", "당류", "영양", "알레르기", "용량", "성분",
+    "설명", "특징", "어떤맛", "맛은", "맛도", "비교",
+)
+
+
+def _contains_any(normalized_text: str, patterns: tuple[str, ...]) -> bool:
+    return any(normalize_text(pattern) in normalized_text for pattern in patterns)
+
+
+def normalize_query_plan(
+    plan: QueryPlan,
+    data: RagData,
+    question: str = "",
+) -> QueryPlan:
+    """LLM 계획의 명백한 오해석만 기존 QueryPlan 필드 안에서 보정한다."""
+    normalized_question = normalize_text(question)
+    positive_sweetness = _contains_any(
+        normalized_question, HIGH_SWEETNESS_PATTERNS
+    )
+    negative_sweetness = _contains_any(
+        normalized_question, NEGATIVE_SWEETNESS_PATTERNS
+    )
+    if plan.intent == "recommend" and positive_sweetness and not negative_sweetness:
+        plan.required_sweetness_level = "높음"
+        plan.preferred_terms = [
+            term
+            for term in plan.preferred_terms
+            if not _contains_any(normalize_text(term), HIGH_SWEETNESS_PATTERNS)
+        ]
+
+    if (
+        plan.intent == "recommend"
+        and not _contains_any(
+            normalized_question, EXPLICIT_RECOMMENDATION_DETAIL_PATTERNS
+        )
+    ):
+        plan.requested_fields = []
+
     if plan.intent == "compare" and not plan.requested_fields:
         plan.requested_fields = ["맛", "가격", "커피 진하기"]
     plan.excluded_menu_ids = sorted(
