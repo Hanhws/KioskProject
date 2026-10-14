@@ -29,7 +29,7 @@ class RecommendationRAG:
         names = ["초코라떼", "카페모카"] if first else ["딸기라떼", "바닐라라떼"]
         return {
             "answer": f"{names[0]}, {names[1]}를 추천해요.",
-            "status": "ok", "related_menu_ids": sorted(ids), "evidence_document_ids": [],
+            "status": "ok", "related_menu_ids": ids, "evidence_document_ids": [],
             "choices": [{"field": "menu_group_id", "value": menu_id, "label": name, "source_id": menu_id}
                         for menu_id, name in zip(ids, names)],
             "applied_conditions": prior_conditions or {"required_sweetness_level": "높음"},
@@ -42,6 +42,16 @@ class PartialRecommendationRAG:
             "answer": "추천 정보를 확인하기 어려워요.", "status": "partial",
             "related_menu_ids": [], "evidence_document_ids": [],
             "choices": [{"field": None, "value": "초코라떼", "label": "초코라떼", "source_id": "MENU-008"}],
+            "next_action": "choose_menu",
+        }
+
+
+class NoCandidateRecommendationRAG:
+    def ask(self, question, *, prior_conditions=None, recent_history=None):
+        return {
+            "answer": "조건에 맞는 메뉴를 찾지 못했어요.", "status": "no_candidates",
+            "related_menu_ids": [], "evidence_document_ids": [],
+            "choices": [{"field": "menu_group_id", "value": "MENU-008", "label": "초코라떼", "source_id": None}],
             "next_action": "choose_menu",
         }
 
@@ -242,10 +252,27 @@ class DialogueTests(unittest.TestCase):
             self.assertEqual(rag.conditions[-1]["excluded_menu_ids"], ["MENU-008", "MENU-006"])
             self.assertEqual(rag.conditions[-1]["required_sweetness_level"], "높음")
 
+    def test_second_recommendation_uses_related_id_order(self):
+        rag = RecommendationRAG()
+        with TestClient(create_app(rag)) as client:
+            first = client.post("/api/chat", json=request("달콤한 음료 추천해 주세요")).json()
+            choose = request("두 번째 걸로 주세요")
+            choose["context"]["last_recommended_menu_ids"] = first["related_menu_ids"]
+            result = client.post("/api/chat", json=choose).json()
+        self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-006"}])
+
     def test_partial_recommendation_does_not_offer_unverified_menu_card(self):
         with TestClient(create_app(PartialRecommendationRAG())) as client:
             result = client.post("/api/chat", json=request("달달한 음료 추천해 줘")).json()
         self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["related_menu_ids"], [])
+        self.assertEqual(result["choices"], [])
+        self.assertIsNone(result["next_action"])
+
+    def test_no_candidate_recommendation_does_not_offer_stale_menu_card(self):
+        with TestClient(create_app(NoCandidateRecommendationRAG())) as client:
+            result = client.post("/api/chat", json=request("달달한 음료 추천해 줘")).json()
+        self.assertEqual(result["status"], "no_candidates")
         self.assertEqual(result["related_menu_ids"], [])
         self.assertEqual(result["choices"], [])
         self.assertIsNone(result["next_action"])

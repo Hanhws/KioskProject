@@ -100,6 +100,20 @@ def _option_quantity(text: str) -> int | None:
     return {"한": 1, "두": 2, "세": 3}.get(match.group(1)) or int(match.group(1))
 
 
+def _ordinal(text: str | None) -> int | None:
+    if not text:
+        return None
+    for ordinal, pattern in [
+        (1, r"첫\s*번째|첫째|1\s*번"),
+        (2, r"두\s*번째|둘째|2\s*번"),
+        (3, r"세\s*번째|셋째|3\s*번"),
+        (4, r"네\s*번째|넷째|4\s*번"),
+    ]:
+        if re.search(pattern, text):
+            return ordinal
+    return None
+
+
 class MockPlanner:
     """Catalog based local smoke planner; live natural language uses LLMDialoguePlanner."""
 
@@ -196,7 +210,7 @@ class MockPlanner:
                     if unknown and not _menu_mentions(unknown.group(1)):
                         steps.append(TurnStep(kind="add", text=part, menu_term=unknown.group(1)))
                 else:
-                    ordinal = 1 if re.search(r"첫\s*번째|첫째|1\s*번", part) else None
+                    ordinal = _ordinal(part)
                     unknown = re.match(r"^([가-힣A-Za-z]+)\s*(?:하나|한\s*잔)?\s*주세요$", part)
                     steps.append(TurnStep(kind="add", text=part,
                                           menu_term=last_menu if "그거" in part else unknown.group(1) if unknown and not ordinal else None,
@@ -227,7 +241,8 @@ class LLMDialoguePlanner:
             "모르는 메뉴는 원문 menu_term에 두세요. 온도가 없으면 null로 두세요. "
             "각 메뉴 주문은 별도 add 단계로 만드세요. '그거'는 같은 메시지의 직전 메뉴로 풀되 "
             "불명확하면 null로 두세요. 수량을 추측하지 마세요. "
-            "추천 요청과 '다른 거', '잘 모르겠어요'는 recommend로 두세요. 첫 번째 추천을 고르면 ordinal=1로 두세요. "
+            "추천 요청과 '다른 거', '잘 모르겠어요'는 recommend로 두세요. "
+            "'첫 번째'는 ordinal=1, '두 번째'는 ordinal=2, '3번'은 ordinal=3으로 두세요. "
             "수량 변경은 update_quantity, 옵션 추가·제거는 update_option(remove_option을 표시), 메뉴 교체는 replace(replacement_term 포함), "
             "메뉴 삭제는 remove, 장바구니 확인은 show_cart, 전체 취소는 clear_cart, 주문 마무리는 finish_ordering, "
             "최종 확인은 confirm_order, 매장·포장은 set_dine_option으로 두세요. "

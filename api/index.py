@@ -10,7 +10,7 @@ from typing import Any, Literal, Mapping, Protocol
 from fastapi import FastAPI
 from pydantic import BaseModel, Field, TypeAdapter
 
-from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _menu_mentions, _option_terms
+from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _menu_mentions, _option_terms, _ordinal
 from .fake_rag import FakeRAG
 
 
@@ -169,9 +169,9 @@ def _target(cart: dict[str, Any], term: str | None, menu_id: str | None) -> tupl
 
 def _action(step: TurnStep, cart: dict[str, Any], last_menu: str | None,
             recommended: list[str]) -> tuple[dict | None, str | None, str | None]:
-    referent = not step.menu_term or bool(re.search(r"그거|그걸|첫\s*번째|첫째|1\s*번", step.menu_term))
+    referent = not step.menu_term or bool(re.search(r"그거|그걸", step.menu_term)) or _ordinal(step.menu_term) is not None
     menu_id = _menu_id(step.menu_term) or (last_menu if referent else None)
-    ordinal = step.ordinal or (1 if re.search(r"첫\s*번째|첫째|1\s*번", step.text) else None)
+    ordinal = step.ordinal or _ordinal(step.text)
     if ordinal is not None:
         menu_id = recommended[ordinal - 1] if ordinal <= len(recommended) else None
         if not menu_id:
@@ -221,17 +221,13 @@ def _action(step: TurnStep, cart: dict[str, Any], last_menu: str | None,
 
 
 def _ordered_recommendations(result: Mapping[str, Any]) -> list[str]:
-    """Only resolve 'first' when the recommendation order is visible in choices or answer."""
-    valid = {menu["id"]: menu["name"] for menu in CATALOG["menus"]}
-    offered = [menu_id for menu_id in result.get("related_menu_ids", []) if menu_id in valid]
-    choices = [row.get("value") if row.get("field") == "menu_group_id" else row.get("source_id")
-               for row in result.get("choices", [])]
-    chosen = [menu_id for menu_id in choices if menu_id in offered]
-    answer = str(result.get("answer", ""))
-    positions = sorted((answer.find(valid[menu_id]), menu_id) for menu_id in offered
-                       if valid[menu_id] in answer)
-    # 답변에 이름이 나온 순서가 사용자가 읽는 순서다. 없는 이름은 버튼 순서를 쓴다.
-    return list(dict.fromkeys([*(menu_id for _, menu_id in positions), *chosen]))
+    """RAG가 확정한 ID 목록을 추천 순서의 단일 기준으로 사용한다."""
+    valid_ids = {menu["id"] for menu in CATALOG["menus"]}
+    return list(dict.fromkeys(
+        menu_id
+        for menu_id in result.get("related_menu_ids", [])
+        if menu_id in valid_ids
+    ))
 
 
 def route_message(request: ChatRequest, rag: RagService, planner: Planner | None = None) -> ChatResponse:
@@ -289,16 +285,34 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 menu_ids.extend(ordered)
                 if ordered:
                     next_action = "choose_menu"
-                if result.get("status") == "partial" and not ordered:
-                    # 검증되지 않은 추천 카드를 주문 가능한 메뉴로 노출하지 않는다.
-                    result_choices = [choice for choice in result_choices if choice.source_id not in valid_ids]
+                    choice_by_id = {
+                        choice.value if choice.field == "menu_group_id" else choice.source_id: choice
+                        for choice in result_choices
+                        if (choice.value if choice.field == "menu_group_id" else choice.source_id) in ordered
+                    }
+                    non_menu_choices = [
+                        choice for choice in result_choices
+                        if choice.source_id not in valid_ids and choice.field != "menu_group_id"
+                    ]
+                    result_choices = [
+                        choice_by_id[menu_id]
+                        for menu_id in ordered
+                        if menu_id in choice_by_id
+                    ] + non_menu_choices
+                else:
+                    # 성공한 ID 목록이 없으면 주문 가능한 메뉴 카드도 노출하지 않는다.
+                    result_choices = [
+                        choice
+                        for choice in result_choices
+                        if choice.field != "menu_group_id" and choice.source_id not in valid_ids
+                    ]
             else:
                 menu_ids.extend(result.get("related_menu_ids", []))
             choices.extend(result_choices)
             evidence_ids.extend(result.get("evidence_document_ids", []))
             status = result.get("status", status)
             result_next_action = result.get("next_action")
-            if step.kind == "recommend" and result.get("status") == "partial" and not ordered and result_next_action == "choose_menu":
+            if step.kind == "recommend" and not ordered and result_next_action == "choose_menu":
                 result_next_action = None
             next_action = next_action or result_next_action
             resume_prompt = result.get("resume_prompt")
