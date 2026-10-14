@@ -10,7 +10,7 @@ class RecordingRAG:
     def __init__(self):
         self.questions = []
 
-    def ask(self, question, *, prior_conditions=None):
+    def ask(self, question, *, prior_conditions=None, recent_history=None):
         self.questions.append(question)
         return {
             "answer": f"[시험 RAG] {question}", "status": "ok", "choices": [],
@@ -22,7 +22,7 @@ class RecommendationRAG:
     def __init__(self):
         self.conditions = []
 
-    def ask(self, question, *, prior_conditions=None):
+    def ask(self, question, *, prior_conditions=None, recent_history=None):
         self.conditions.append(prior_conditions)
         first = not prior_conditions or not prior_conditions.get("excluded_menu_ids")
         ids = ["MENU-008", "MENU-006"] if first else ["MENU-011", "MENU-004"]
@@ -33,6 +33,16 @@ class RecommendationRAG:
             "choices": [{"field": "menu_group_id", "value": menu_id, "label": name, "source_id": menu_id}
                         for menu_id, name in zip(ids, names)],
             "applied_conditions": prior_conditions or {"required_sweetness_level": "높음"},
+        }
+
+
+class PartialRecommendationRAG:
+    def ask(self, question, *, prior_conditions=None, recent_history=None):
+        return {
+            "answer": "추천 정보를 확인하기 어려워요.", "status": "partial",
+            "related_menu_ids": [], "evidence_document_ids": [],
+            "choices": [{"field": None, "value": "초코라떼", "label": "초코라떼", "source_id": "MENU-008"}],
+            "next_action": "choose_menu",
         }
 
 
@@ -206,6 +216,14 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual(result["next_action"], "resume_pending_question")
         self.assertEqual(result["resume_prompt"], body["context"]["cart"]["pending_question"])
 
+    def test_pending_menu_information_uses_menu_name_and_resumes(self):
+        body = request("카페인은요?")
+        body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
+        result = self.client.post("/api/chat", json=body).json()
+        self.assertEqual(self.rag.questions[-1], "카페라떼 카페인은요")
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["next_action"], "resume_pending_question")
+
     def test_recommendation_order_first_item_and_exclusion_across_turns(self):
         rag = RecommendationRAG()
         with TestClient(create_app(rag)) as client:
@@ -223,6 +241,14 @@ class DialogueTests(unittest.TestCase):
             self.assertEqual(second["related_menu_ids"][:2], ["MENU-011", "MENU-004"])
             self.assertEqual(rag.conditions[-1]["excluded_menu_ids"], ["MENU-008", "MENU-006"])
             self.assertEqual(rag.conditions[-1]["required_sweetness_level"], "높음")
+
+    def test_partial_recommendation_does_not_offer_unverified_menu_card(self):
+        with TestClient(create_app(PartialRecommendationRAG())) as client:
+            result = client.post("/api/chat", json=request("달달한 음료 추천해 줘")).json()
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["related_menu_ids"], [])
+        self.assertEqual(result["choices"], [])
+        self.assertIsNone(result["next_action"])
 
     def test_indecision_count_passed_to_rag_for_hti_3_9(self):
         rag = RecommendationRAG()

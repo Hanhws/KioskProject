@@ -3,6 +3,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from api.index import create_app
+from api.live_rag import LiveRAG
 
 
 def chat_request(message: str) -> dict:
@@ -39,9 +40,17 @@ def chat_request(message: str) -> dict:
 class RecordingRAG:
     def __init__(self):
         self.questions = []
+        self.histories = []
 
-    def ask(self, question: str, *, prior_conditions: dict | None = None) -> dict:
+    def ask(
+        self,
+        question: str,
+        *,
+        prior_conditions: dict | None = None,
+        recent_history: list[dict[str, str]] | None = None,
+    ) -> dict:
         self.questions.append(question)
+        self.histories.append(recent_history)
         return {
             "answer": "주입된 RAG의 시험 답변",
             "status": "ok",
@@ -53,6 +62,39 @@ class RecordingRAG:
 
 
 class ChatApiTests(unittest.TestCase):
+    def test_health_endpoint_reports_server_liveness(self):
+        with TestClient(create_app()) as client:
+            response = client.get("/api/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+
+    def test_live_adapter_forwards_history_without_initializing_real_rag(self):
+        class StubService:
+            def __init__(self):
+                self.calls = []
+
+            def ask(self, question, *, prior_conditions=None, recent_history=None):
+                self.calls.append((question, prior_conditions, recent_history))
+                return {
+                    "answer": "시험 답변", "status": "ok", "choices": [],
+                    "related_menu_ids": [], "evidence_document_ids": [],
+                }
+
+        backend = StubService()
+        rag = LiveRAG()
+        rag.service = backend
+        body = chat_request("아메리카노 가격 알려 주세요")
+        body["context"]["prior_conditions"] = {"requested_fields": ["가격"]}
+        with TestClient(create_app(rag)) as client:
+            response = client.post("/api/chat", json=body)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(backend.calls, [(
+            "아메리카노 가격 알려 주세요",
+            {"requested_fields": ["가격"]},
+            [{"role": "assistant", "content": "안녕하세요."}],
+        )])
+        self.assertNotIn("cart_actions", response.json())
+
     def test_default_fake_accepts_frontend_request_without_key(self):
         with TestClient(create_app()) as client:
             response = client.post("/api/chat", json=chat_request("아메리카노 가격 알려 주세요"))
@@ -69,6 +111,7 @@ class ChatApiTests(unittest.TestCase):
             response = client.post("/api/chat", json=chat_request("정보 질문"))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(rag.questions, ["정보 질문"])
+        self.assertEqual(rag.histories, [[{"role": "assistant", "content": "안녕하세요."}]])
         self.assertEqual(response.json()["evidence_document_ids"], ["TEST-EVIDENCE"])
         self.assertNotIn("cart_actions", response.json())
 

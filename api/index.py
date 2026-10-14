@@ -107,7 +107,13 @@ class ChatResponse(BaseModel):
 
 
 class RagService(Protocol):
-    def ask(self, question: str, *, prior_conditions: dict | None = None) -> Mapping[str, Any]: ...
+    def ask(
+        self,
+        question: str,
+        *,
+        prior_conditions: dict | None = None,
+        recent_history: list[dict[str, str]] | None = None,
+    ) -> Mapping[str, Any]: ...
 
 
 def _menu_id(term: str | None) -> str | None:
@@ -250,8 +256,17 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
         if step.kind in {"information", "recommend"}:
             question = step.text
             cart_lines = request.context.cart.get("lines", [])
-            if not _menu_mentions(question) and _option_terms(question) and len(cart_lines) == 1:
-                question = f"{cart_lines[0]['menu_name']}에 {question}"
+            if step.kind == "information" and not _menu_mentions(question) and (
+                _option_terms(question) or re.search(
+                    r"가격|얼마|카페인|칼로리|당류|영양|알레르기|용량|맛|설명|성분|옵션|가능",
+                    question,
+                )
+            ):
+                pending_mentions = _menu_mentions(request.context.cart.get("pending_question") or "")
+                if pending_mentions:
+                    question = f"{pending_mentions[-1][2]} {question}"
+                elif len(cart_lines) == 1:
+                    question = f"{cart_lines[0]['menu_name']}에 {question}"
             conditions = request.context.prior_conditions
             if step.kind == "recommend" and re.search(r"잘\s*모르겠|아무거나", question):
                 conditions = {**(conditions or {})}
@@ -261,20 +276,31 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 conditions["excluded_menu_ids"] = list(dict.fromkeys([
                     *conditions.get("excluded_menu_ids", []), *recommended,
                 ]))
-            result = rag.ask(question, prior_conditions=conditions)
+            result = rag.ask(
+                question,
+                prior_conditions=conditions,
+                recent_history=[row.model_dump() for row in request.history[-6:]],
+            )
             if result.get("answer"):
                 answers.append(str(result["answer"]))
-            choices.extend(RagChoice.model_validate(row) for row in result.get("choices", []))
+            result_choices = [RagChoice.model_validate(row) for row in result.get("choices", [])]
             if step.kind == "recommend":
                 ordered = _ordered_recommendations(result) if result.get("status") == "ok" and not result.get("error") else []
                 menu_ids.extend(ordered)
                 if ordered:
                     next_action = "choose_menu"
+                if result.get("status") == "partial" and not ordered:
+                    # 검증되지 않은 추천 카드를 주문 가능한 메뉴로 노출하지 않는다.
+                    result_choices = [choice for choice in result_choices if choice.source_id not in valid_ids]
             else:
                 menu_ids.extend(result.get("related_menu_ids", []))
+            choices.extend(result_choices)
             evidence_ids.extend(result.get("evidence_document_ids", []))
             status = result.get("status", status)
-            next_action = next_action or result.get("next_action")
+            result_next_action = result.get("next_action")
+            if step.kind == "recommend" and result.get("status") == "partial" and not ordered and result_next_action == "choose_menu":
+                result_next_action = None
+            next_action = next_action or result_next_action
             resume_prompt = result.get("resume_prompt")
             if result.get("applied_conditions") is not None:
                 prior_conditions = result["applied_conditions"]
@@ -348,6 +374,10 @@ def create_app(rag: RagService | None = None, planner: Planner | None = None) ->
     else:
         active_rag = rag if rag is not None else FakeRAG()
         active_planner = planner if planner is not None else MockPlanner()
+
+    @app.get("/api/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
 
     @app.post("/api/chat", response_model=ChatResponse, response_model_exclude_unset=True)
     def chat(request: ChatRequest) -> ChatResponse:

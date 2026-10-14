@@ -23,9 +23,21 @@ class LiveRAG:
             index_dir=ROOT / "rag/rag_index/faiss_openai_v1",
             embedding_json_path=ROOT / "rag/rag_embeddings.json",
             answer_model=os.getenv("RAG_ANSWER_MODEL", "gpt-4.1-mini"),
-            rebuild_index=False,
+            rebuild_index=os.getenv("RAG_REBUILD_INDEX", "0").strip().lower() in {
+                "1", "true", "yes", "y", "on",
+            },
         )
         return CafeRAGService.from_config(config)
 
-    def ask(self, question: str, *, prior_conditions: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self.service.ask(question, prior_conditions=prior_conditions)
+    def ask(
+        self,
+        question: str,
+        *,
+        prior_conditions: dict[str, Any] | None = None,
+        recent_history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        return self.service.ask(
+            question,
+            prior_conditions=prior_conditions,
+            recent_history=recent_history,
+        )
