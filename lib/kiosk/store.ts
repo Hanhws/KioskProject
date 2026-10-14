@@ -23,6 +23,7 @@ export interface KioskState {
   messages: ChatMessage[];
   lastRecommended: string[];
   priorConditions: Record<string, unknown> | null;
+  pendingMenuConfirmation: string | null;
   busy: boolean;
   seq: number;
 }
@@ -45,6 +46,7 @@ export function initialKioskState(): KioskState {
     messages: [{ id: "m0", role: "kiosk", ...greeting }],
     lastRecommended: [],
     priorConditions: null,
+    pendingMenuConfirmation: null,
     busy: false,
     seq: 1,
   };
@@ -87,18 +89,23 @@ function applyEngine(state: KioskState, actions: EngineAction[], silent = false,
   const { state: order, reply } = runActions(prev, actions);
   // silent: 장바구니 패널의 잦은 조작은 질문이 생기거나 단계가 바뀔 때만 대화창에 남긴다
   const show = !silent || !!order.pending || VISIBLE_STAGES.has(order.stage) || order.stage !== prev.stage;
-  if (!show) return { ...state, order };
+  if (!show) return { ...state, order, pendingMenuConfirmation: null };
   const withEcho = echo ? push(state, { role: "user", text: echo, choices: [], menuIds: [] }) : state;
-  return pushReply({ ...withEcho, order }, reply);
+  return pushReply({ ...withEcho, order, pendingMenuConfirmation: null }, reply);
 }
 
 function handleServer(state: KioskState, response: ChatResponse): KioskState {
   const menuIds = (response.related_menu_ids ?? []).filter((id) => getMenu(id)).slice(0, MAX_CARDS);
+  const isRecommendation = response.next_action === "choose_menu";
+  const confirmationId = response.next_action === "confirm_menu"
+    ? response.choices.find((choice) => choice.field === "menu_group_id" && getMenu(choice.value))?.value ?? null
+    : null;
   let next: KioskState = {
     ...state,
     busy: false,
-    lastRecommended: menuIds.length ? menuIds : state.lastRecommended,
+    lastRecommended: isRecommendation && menuIds.length ? menuIds : state.lastRecommended,
     priorConditions: response.prior_conditions !== undefined ? response.prior_conditions : state.priorConditions,
+    pendingMenuConfirmation: confirmationId,
   };
   const failed = !!response.error;
   if (response.answer) {
@@ -113,6 +120,11 @@ function handleServer(state: KioskState, response: ChatResponse): KioskState {
   }
 
   if (response.cart_actions?.length) {
+    // HTI 공통 규칙 1: 보류 질문 중 장바구니를 확인해도 진행 중인 주문은 유지한다.
+    if (state.order.pending && response.cart_actions.every((action) => action.type === "show_cart")) {
+      const { reply } = runActions({ ...state.order, pending: null, queued: [] }, response.cart_actions);
+      return pushReply(pushReply(next, reply), stagePrompt(state.order));
+    }
     return applyEngine(next, response.cart_actions);
   }
 
@@ -138,7 +150,7 @@ function handleServer(state: KioskState, response: ChatResponse): KioskState {
 export function kioskReducer(state: KioskState, event: KioskEvent): KioskState {
   switch (event.type) {
     case "user_text":
-      return push(state, { role: "user", text: event.text, choices: [], menuIds: [] });
+      return push({ ...state, pendingMenuConfirmation: null }, { role: "user", text: event.text, choices: [], menuIds: [] });
     case "engine":
       return applyEngine(state, event.actions, event.silent, event.echo);
     case "server":
@@ -162,6 +174,15 @@ export function kioskReducer(state: KioskState, event: KioskEvent): KioskState {
     case "reset":
       return initialKioskState();
   }
+}
+
+/** HTI 8.5: 오타 후보를 확인한 뒤 '네'라고 답해도 같은 메뉴를 담는다. */
+export function confirmSuggestedMenu(state: KioskState, text: string): EngineAction[] | null {
+  const menuId = state.pendingMenuConfirmation;
+  if (!menuId || !getMenu(menuId)) return null;
+  return /^(네|예|맞아요|맞습니다|그거요|그걸로|응)(?:[,，.!\s]|$)/.test(text.trim())
+    ? [{ type: "add_item", menu_id: menuId }]
+    : null;
 }
 
 export function buildChatRequest(state: KioskState, message: string): ChatRequest {

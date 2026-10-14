@@ -6,6 +6,7 @@
     "catalog": "node scripts/build-catalog.mjs",
     "predev": "npm run catalog",
     "dev": "next dev",
+    "api": "python3 -m uvicorn api.index:app --host 127.0.0.1 --port 8000",
     "prebuild": "npm run catalog",
     "build": "next build",
     "start": "next start",

@@ -203,6 +203,15 @@ describe("장바구니 (cart)", () => {
     expect(done.state.lines.map((l) => l.menuId)).toEqual([LATTE]);
   });
 
+  it("6.5.1 대상 확인에 메뉴명을 입력해도 원래 삭제 요청을 이어서 처리한다", () => {
+    const { state } = run(initialOrderState(), add(LATTE, { temperature: "HOT" }), add(VANILLA_LATTE, { temperature: "HOT" }));
+    const asked = run(state, { type: "remove_item", target: { menu_ids: [LATTE, VANILLA_LATTE] } });
+    const typed = interpretStageReply(asked.state, "바닐라라떼요");
+    expect(typed).toMatchObject([{ type: "remove_item", target: { line_id: asked.state.lines[1].lineId } }]);
+    const done = run(asked.state, ...typed!);
+    expect(done.state.lines.map((line) => line.menuId)).toEqual([LATTE]);
+  });
+
   it("6.7 전체 취소는 확인 후 비우고 인사로", () => {
     const { state } = run(initialOrderState(), add(CHEESECAKE));
     const asked = run(state, { type: "clear_cart" });

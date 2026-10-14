@@ -6,6 +6,7 @@
  */
 
 import type { CartAction, EngineAction, OrderState } from "./types";
+import { getMenu, getOption } from "./catalog";
 
 const YES = /^(네|예|응|어|ㅇㅇ|맞아|맞아요|맞습니다|좋아|좋아요|그래|그래요|그렇게|넵|넹|yes|ok|오케이)/i;
 const NO = /^(아니|아뇨|아니요|아니오|취소|됐어|no)/i;
@@ -37,6 +38,23 @@ export function interpretStageReply(state: OrderState, rawText: string): EngineA
   if (pending?.kind === "clear_confirm") {
     if (YES.test(text)) return [{ type: "clear_cart", confirmed: true }];
     if (NO.test(text)) return [{ type: "cancel_pending" }];
+    return null;
+  }
+  if (pending?.kind === "target") {
+    const candidates = state.lines.filter((line) => pending.lineIds.includes(line.lineId));
+    const ranked = candidates.map((line) => {
+      const menu = getMenu(line.menuId);
+      const menuTerms = [menu?.name, ...(menu?.aliases ?? [])].filter((term): term is string => !!term);
+      const menuScore = Math.max(0, ...menuTerms.filter((term) => text.includes(term)).map((term) => term.length));
+      const optionScore = Object.keys(line.options).some((id) => {
+        const name = getOption(id)?.name ?? "";
+        return name.length > 0 && (text.includes(name) || text.includes(name.split(" ")[0]));
+      }) ? 100 : 0;
+      return { line, score: menuScore + optionScore };
+    }).filter((row) => row.score > 0).sort((a, b) => b.score - a.score);
+    if (ranked.length && (ranked.length === 1 || ranked[0].score > ranked[1].score)) {
+      return [{ ...pending.action, target: { line_id: ranked[0].line.lineId } } as CartAction];
+    }
     return null;
   }
   if (pending) return null;

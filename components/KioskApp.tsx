@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { postChat } from "@/lib/api";
-import { buildChatRequest, initialKioskState, kioskReducer } from "@/lib/kiosk/store";
+import { buildChatRequest, confirmSuggestedMenu, initialKioskState, kioskReducer } from "@/lib/kiosk/store";
 import { getMenu } from "@/lib/order/catalog";
 import { won } from "@/lib/order/format";
 import { priceCart } from "@/lib/order/pricing";
@@ -38,6 +38,12 @@ export default function KioskApp() {
     if (!text || current.busy) return;
     setView("chat");
 
+    const confirmedMenu = confirmSuggestedMenu(current, text);
+    if (confirmedMenu) {
+      runEngine(confirmedMenu, text);
+      return;
+    }
+
     // 닫힌 질문(온도·예/아니요·매장/포장·결제 수단)은 바로 처리
     const local = interpretStageReply(current.order, text);
     if (local) {
@@ -54,6 +60,8 @@ export default function KioskApp() {
     try {
       const response = await postChat(request, controller.signal);
       dispatch({ type: "server", response });
+      if (response.next_action === "open_menu") setView("menu");
+      if (response.next_action === "open_chat") setView("chat");
     } catch (error) {
       if ((error as Error).name === "AbortError") return;
       dispatch({ type: "server_error" });
