@@ -87,6 +87,13 @@ export function interpretStageReply(state: OrderState, rawText: string): EngineA
       return null;
     case "final_confirm":
       if (YES.test(text)) return [{ type: "confirm_order" }];
+      // 결제 수단까지 명시한 문장은 최종 주문·결제 동의를 함께 표현한다.
+      if (CARD.test(text)) return [
+        { type: "confirm_order" }, { type: "select_payment", method: "card" }, { type: "pay_now" },
+      ];
+      if (EASY_PAY.test(text)) return [
+        { type: "confirm_order" }, { type: "select_payment", method: "easy_pay" }, { type: "pay_now" },
+      ];
       return null;
     case "payment":
     case "pay_confirm":

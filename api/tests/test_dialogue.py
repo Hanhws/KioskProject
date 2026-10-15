@@ -189,7 +189,8 @@ class DialogueTests(unittest.TestCase):
         self.assertNotIn("cart_actions", result)
         self.assertEqual(result["related_menu_ids"], ["MENU-030", "MENU-032"])
         self.assertEqual([choice["value"] for choice in result["choices"]], result["related_menu_ids"])
-        self.assertIn("개발·시험용 가짜 RAG", result["answer"])
+        self.assertIn("현재 판매하지 않아요", result["answer"])
+        self.assertIn("초코무스케이크", result["answer"])
         self.assertIsNone(result["next_action"])
 
     def test_live_adapter_uses_team_alternative_rule_when_rag_has_no_candidates(self):
@@ -639,6 +640,20 @@ class PaymentRequestTests(unittest.TestCase):
             self.assertIsNone(result.get("cart_actions"))
             self.assertIn("카페라떼는 따뜻한 것", result["answer"])
         self.assertEqual(rag.questions, [])
+
+    def test_presentation_cart_total_and_natural_quantity_change_are_actions(self):
+        americano = {
+            "line_id": "L1", "menu_id": "MENU-001", "variant_id": "MEGA-002",
+            "menu_name": "아메리카노", "temperature": "ICE", "options": {},
+            "option_labels": [], "quantity": 2, "unit_price_krw": 2500, "line_total_krw": 5000,
+        }
+        with TestClient(create_app(RecordingRAG())) as client:
+            show = client.post("/api/chat", json=request("지금까지 얼마예요?", [americano])).json()
+            update = client.post("/api/chat", json=request("아메리카노 한 잔만 할게요.", [americano])).json()
+        self.assertEqual(show["cart_actions"], [{"type": "show_cart"}])
+        self.assertEqual(update["cart_actions"], [{
+            "type": "update_item", "target": {"menu_id": "MENU-001"}, "quantity": 1,
+        }])
 
 
 if __name__ == "__main__":

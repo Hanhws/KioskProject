@@ -161,6 +161,15 @@ class MockPlanner:
     def plan(self, message: str, context: dict) -> DialoguePlan:
         if is_payment_request(message):
             return DialoguePlan(steps=[TurnStep(kind="finish_ordering", text=message)])
+        if (len(_menu_mentions(message)) >= 2 and re.search(r"진|비교", message)
+                and re.search(r"가격|얼마", message)):
+            # 비교와 가격처럼 같은 두 메뉴를 대상으로 한 복합 정보 질문은
+            # 문장부호로 나누지 않아 RAG가 두 요구를 함께 답하게 한다.
+            return DialoguePlan(steps=[TurnStep(kind="information", text=message)])
+        if (context.get("last_recommended_menu_ids") and re.search(r"싫어|말고|제외", message)
+                and re.search(r"뜨거|따뜻|차가|아이스|달|단|쓴|카페인", message)):
+            # 직전 추천에 대한 취향 수정은 메뉴명을 다시 말하지 않아도 추천 후속 턴이다.
+            return DialoguePlan(steps=[TurnStep(kind="recommend", text=message)])
         control = control_step(message, context)
         if control:
             return DialoguePlan(steps=[control])
@@ -201,7 +210,7 @@ class MockPlanner:
             if re.search(r"(?:다\s*취소|전부\s*취소|처음부터\s*다시|전체\s*취소)", part):
                 steps.append(TurnStep(kind="clear_cart", text=part))
                 continue
-            if re.search(r"총\s*얼마|(?:뭐|무엇|얼마|총액|내역).*(?:담|장바구니|총|결제)|(?:담|장바구니).*(?:뭐|무엇|얼마|내역)", part):
+            if re.search(r"총\s*얼마|지금까지.*얼마|(?:뭐|무엇|얼마|총액|내역).*(?:담|장바구니|총|결제)|(?:담|장바구니).*(?:뭐|무엇|얼마|내역)", part):
                 if not steps or steps[-1].kind != "show_cart":
                     steps.append(TurnStep(kind="show_cart", text=part))
                 continue
@@ -248,6 +257,11 @@ class MockPlanner:
                     continue
                 if "빼" in part and not _option_terms(part):
                     steps.append(TurnStep(kind="remove", text=part, menu_term=mentions[0][2] if mentions else None))
+                    continue
+                if mentions and context.get("cart", {}).get("lines") and re.search(
+                    r"(?:잔|개)\s*(?:만)?\s*(?:할게|할래|주세요)|수량.*(?:바꿔|변경)", part
+                ):
+                    steps.append(TurnStep(kind="update_quantity", text=part, menu_term=mentions[0][2], quantity=_quantity(part)))
                     continue
                 if re.search(r"(?:잔|개)\s*(?:으로|로)\s*(?:바꿔|변경)|수량.*(?:바꿔|변경)", part):
                     steps.append(TurnStep(kind="update_quantity", text=part, menu_term=mentions[0][2] if mentions else None, quantity=_quantity(part)))

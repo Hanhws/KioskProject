@@ -329,6 +329,20 @@ describe("주문 진행 흐름 (flow)", () => {
     expect(interpretStageReply(state, "카드로 할게요, 케이크도 추가요")).toBeNull();
   });
 
+  it("최종 확인에서 결제 수단까지 말하면 모의 주문을 완료한다", () => {
+    let result = run(initialOrderState(), add(AMERICANO, { temperature: "ICE" }));
+    result = run(result.state, { type: "set_dine_option", value: "takeout" });
+    result = run(result.state, { type: "finish_ordering" });
+    expect(result.state.stage).toBe("final_confirm");
+    const actions = interpretStageReply(result.state, "카드로 결제할게요")!;
+    expect(actions).toEqual([
+      { type: "confirm_order" }, { type: "select_payment", method: "card" }, { type: "pay_now" },
+    ]);
+    result = run(result.state, ...actions);
+    expect(result.state.stage).toBe("complete");
+    expect(result.reply.text).toContain("모의 결제");
+  });
+
   it.each(["결제하기", "결제해 줘", "결제해 주세요", "결제할게요", "계산하기"])("채팅 '%s'로 단계별 확인 후 모의 결제를 완료한다", (text) => {
     let result = run(initialOrderState(), add(AMERICANO, { temperature: "ICE" }));
     result = run(result.state, ...interpretStageReply(result.state, text)!);
