@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -24,7 +25,7 @@ class TurnStep(BaseModel):
     kind: Literal[
         "information", "recommend", "add", "update_option", "update_quantity",
         "remove", "replace", "show_cart", "clear_cart", "finish_ordering",
-        "confirm_order", "set_dine_option", "set_order_mode", "answer_pending", "temperature_conflict", "unknown",
+        "confirm_order", "set_dine_option", "set_order_mode", "answer_pending", "update_temperature", "temperature_conflict", "unknown",
     ]
     text: str
     menu_term: str | None = None
@@ -114,6 +115,15 @@ def _ordinal(text: str | None) -> int | None:
     return None
 
 
+def _category_term(text: str) -> str | None:
+    """Only recognize a close, unambiguous catalog category; never pick a menu."""
+    key = re.sub(r"(?:도|요)$", "", text.strip())
+    categories = {menu["category"] for menu in MENUS}
+    scores = sorted(((SequenceMatcher(None, key, category).ratio(), category)
+                     for category in categories if abs(len(key) - len(category)) <= 1), reverse=True)
+    return scores[0][1] if scores and scores[0][0] >= 0.65 and (len(scores) == 1 or scores[0][0] - scores[1][0] >= 0.15) else None
+
+
 class MockPlanner:
     """Catalog based rule planner for local tests and clear live order phrases."""
 
@@ -135,6 +145,10 @@ class MockPlanner:
                 elif re.fullmatch(r"\s*(?:아이스(?:요|로)?|차갑게|따뜻하게|핫(?:으로|요)?)\s*", part):
                     steps.append(TurnStep(kind="answer_pending", text=part, temperature=_temperature(part)))
                     continue
+            bare_temperature = re.sub(r"[~〜\s]+", "", part)
+            if not pending and re.fullmatch(r"(?:ice|아이스|hot|핫)(?:요|로)?", bare_temperature, re.I):
+                steps.append(TurnStep(kind="update_temperature", text=part, temperature=_temperature(part)))
+                continue
             mentions = _menu_mentions(part)
             if mentions:
                 last_menu = mentions[-1][2]
@@ -167,7 +181,7 @@ class MockPlanner:
                 steps.append(TurnStep(kind="recommend", text=part))
                 continue
             question = bool(re.search(r"얼마|가격|가능|할 수|되나요|돼요|뭐|어떤|추천|알려|있어요", part))
-            request = bool(re.search(r"주세요|주문|담아|담아줘|추가해|추가요|빼\s*주세요|빼줘|하나요|두\s*잔|한\s*잔", part))
+            request = bool(re.search(r"주세요|주문|담아|추가|빼|제거|변경|바꿔|하나요|(?:\d+|한|하나|두|둘|세|셋|네|넷)\s*(?:잔|개)", part))
             if question and (not request or re.search(r"얼마|가격|가능|할 수|추천|알려", part)):
                 steps.append(TurnStep(kind="information", text=part))
                 continue
@@ -176,7 +190,7 @@ class MockPlanner:
                     steps.append(TurnStep(kind="replace", text=part, menu_term=mentions[0][2], replacement_term=mentions[-1][2]))
                     continue
                 option_update = bool(_option_terms(part)) and not re.search(r"(메뉴|음료).*추가", part) and (
-                    bool(re.search(r"추가|변경|바꿔|빼|제외|올려", part)) or
+                    bool(re.search(r"추가|변경|바꿔|빼|제거|제외|올려", part)) or
                     (bool(re.search(r"해\s*주세요", part)) and bool(context.get("cart", {}).get("lines"))) or
                     ("연하게" in part and bool(context.get("cart", {}).get("lines")))
                 )
@@ -191,13 +205,13 @@ class MockPlanner:
                 if option_update and (not mentions or not re.search(r"(잔|개).*(주세요|주문|담아)", part)):
                     steps.append(TurnStep(kind="update_option", text=part, menu_term=mentions[0][2] if mentions else None,
                                           option_terms=_option_terms(part), option_quantity=_option_quantity(part),
-                                          remove_option=bool(re.search(r"빼|제외|없이", part))))
+                                          remove_option=bool(re.search(r"빼|제거|제외|없이", part))))
                     continue
                 if "빼" in part and not _option_terms(part):
                     steps.append(TurnStep(kind="remove", text=part, menu_term=mentions[0][2] if mentions else None))
                     continue
-                if mentions and re.search(r"(?:잔|개)\s*(?:으로|로)\s*(?:바꿔|변경)|수량.*(?:바꿔|변경)", part):
-                    steps.append(TurnStep(kind="update_quantity", text=part, menu_term=mentions[0][2], quantity=_quantity(part)))
+                if re.search(r"(?:잔|개)\s*(?:으로|로)\s*(?:바꿔|변경)|수량.*(?:바꿔|변경)", part):
+                    steps.append(TurnStep(kind="update_quantity", text=part, menu_term=mentions[0][2] if mentions else None, quantity=_quantity(part)))
                     continue
                 # HTI 6.1.2: 두 잔 중 하나에만 옵션을 지정한 경우는 별도 항목이다.
                 if len(mentions) == 1 and _quantity(part) == 2 and re.search(r"(?:하나는|한\s*잔은)", part) and _option_terms(part):
@@ -219,7 +233,7 @@ class MockPlanner:
                                               temperature=_temperature(item_segment), quantity=_quantity(item_text),
                                               option_terms=_option_terms(item_text), option_quantity=_option_quantity(item_text)))
                     tail = part[mentions[-1][1]:]
-                    unknown = re.search(r"(?:랑|하고|과|와)\s*([^, ]+)\s*(?:주세요|주문|담아)", tail)
+                    unknown = re.search(r"(?:랑|하고|과|와|이랑)\s*([^, ]+?)(?:\s*(?:주세요|주문|담아))?$", tail)
                     if unknown and not _menu_mentions(unknown.group(1)):
                         steps.append(TurnStep(kind="add", text=part, menu_term=unknown.group(1)))
                 else:
@@ -269,7 +283,9 @@ class LLMDialoguePlanner:
             and rule_plan.steps[0].quantity is not None
             and bool(re.search(r"(?:잔|개)\s*(?:으로|로)\s*(?:바꿔|변경)", message))
         )
-        if explicit_order or pending_add or quantity_change:
+        clear_edit = len(rule_plan.steps) == 1 and rule_plan.steps[0].kind in {"update_option", "update_temperature"}
+        category_order = any(step.kind == "add" and _category_term(step.menu_term or "") for step in rule_plan.steps) and all(step.kind == "add" for step in rule_plan.steps)
+        if explicit_order or pending_add or quantity_change or clear_edit or category_order:
             return rule_plan
 
         menu_names = [m["name"] for m in MENUS]

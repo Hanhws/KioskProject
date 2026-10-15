@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import os
 import re
-from difflib import get_close_matches
+from difflib import SequenceMatcher, get_close_matches
 from typing import Any, Literal, Mapping, Protocol
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field, TypeAdapter
 
-from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _menu_mentions, _option_terms, _ordinal
+from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _category_term, _menu_mentions, _option_terms, _ordinal
 from .fake_rag import FakeRAG
 
 
@@ -59,6 +59,7 @@ class UpdateItemAction(BaseModel):
     target: dict[str, Any]
     set_options: dict[str, int] | None = None
     quantity: int | None = None
+    temperature: Literal["HOT", "ICE"] | None = None
 
 
 class RemoveItemAction(BaseModel):
@@ -164,9 +165,30 @@ def _menu_candidates(term: str | None) -> list[dict[str, Any]]:
     if not term:
         return []
     key = "".join(term.lower().split())
-    return [menu for menu in CATALOG["menus"]
+    direct = [menu for menu in CATALOG["menus"]
             if key and any(key in "".join(alias.lower().split())
                            for alias in [menu["name"], *menu["aliases"]])]
+    if direct:
+        return direct
+    category = _category_term(term)
+    return [menu for menu in CATALOG["menus"] if menu["category"] == category] if category else []
+
+
+def _requested_information(text: str) -> str:
+    """Normalize a clear typo in an information field, without guessing a menu."""
+    fields = ("카페인", "칼로리", "당류", "알레르기", "가격", "용량")
+    if any(field in text for field in fields):
+        return text
+    words = re.findall(r"[가-힣ㄱ-ㅎ]+", text)
+    for word in words:
+        matches = sorted(((max(
+            SequenceMatcher(None, word[:length], field).ratio()
+            for length in range(len(field), min(len(word), len(field) + 2) + 1)
+        ) if len(word) >= len(field) else SequenceMatcher(None, word, field).ratio(), field)
+            for field in fields), reverse=True)
+        if matches and matches[0][0] >= 0.6 and (len(matches) == 1 or matches[0][0] - matches[1][0] >= 0.15):
+            return matches[0][1]
+    return text
 
 
 def _target(cart: dict[str, Any], term: str | None, menu_id: str | None) -> tuple[dict | None, str | None]:
@@ -185,7 +207,7 @@ def _target(cart: dict[str, Any], term: str | None, menu_id: str | None) -> tupl
     return ({"menu_id": menu_id} if menu_id else {"line_id": candidates[0]["line_id"]}), None
 
 
-def _action(step: TurnStep, cart: dict[str, Any], last_menu: str | None,
+def _action(step: TurnStep, cart: dict[str, Any], pending: PendingContext | None, last_menu: str | None,
             recommended: list[str]) -> tuple[dict | None, str | None, str | None]:
     referent = not step.menu_term or bool(re.search(r"그거|그걸", step.menu_term)) or _ordinal(step.menu_term) is not None
     menu_id = _menu_id(step.menu_term) or (last_menu if referent else None)
@@ -222,6 +244,33 @@ def _action(step: TurnStep, cart: dict[str, Any], last_menu: str | None,
             action["options"] = options
         return action, None, None
 
+    if step.kind == "update_temperature":
+        if not step.temperature:
+            return None, "따뜻하게 또는 아이스로 말씀해 주세요.", None
+        drink_ids = {menu["id"] for menu in CATALOG["menus"] if menu["type"] == "음료"}
+        drinks = [line for line in cart.get("lines", []) if line.get("menu_id") in drink_ids]
+        if not drinks:
+            return None, "온도를 바꿀 음료가 없어요. 메뉴를 알려 주세요.", None
+        target = {"line_id": drinks[0]["line_id"]} if len(drinks) == 1 else {"menu_ids": list(dict.fromkeys(line["menu_id"] for line in drinks))}
+        return {"type": "update_item", "target": target, "temperature": step.temperature}, None, None
+
+    draft = pending.action if pending and pending.kind == "temperature" else None
+    draft_id = draft.get("menu_id") if draft else None
+    matches_draft = draft_id and (not step.menu_term or menu_id == draft_id)
+    matching_lines = [line for line in cart.get("lines", []) if line.get("menu_id") == draft_id]
+    if step.kind in {"update_option", "update_quantity"} and matches_draft and matching_lines:
+        if not re.search(r"장바구니|이미\s*담", step.text) and not re.search(r"초안|보류|담기\s*전", step.text):
+            return None, "이미 담긴 메뉴와 보류 중인 같은 메뉴 중 어느 쪽을 바꿀까요?", None
+        if re.search(r"초안|보류|담기\s*전", step.text):
+            matching_lines = []
+    if step.kind in {"update_option", "update_quantity"} and matches_draft and not matching_lines:
+        if step.kind == "update_quantity":
+            return ({"type": "update_item", "target": {"pending": True}, "quantity": step.quantity}, None, None) if step.quantity else (None, "몇 잔으로 바꿀지 알려 주세요.", None)
+        options, problem = _option_selection(step.option_terms, step.option_quantity, step.remove_option)
+        if problem or not options:
+            return None, problem or "어떤 옵션을 바꿀지 알려 주세요.", None
+        return {"type": "update_item", "target": {"pending": True}, "set_options": options}, None, None
+
     target, problem = _target(cart, step.menu_term, menu_id)
     if problem:
         return None, problem, None
@@ -253,7 +302,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
     planner = planner or MockPlanner()
     planner_context = {**request.context.model_dump(), "history": [row.model_dump() for row in request.history]}
     plan: DialoguePlan = planner.plan(request.message, planner_context)
-    mutating = {"add", "update_option", "update_quantity", "remove", "replace", "clear_cart"}
+    mutating = {"add", "update_option", "update_quantity", "update_temperature", "remove", "replace", "clear_cart"}
     has_change = any(step.kind in mutating for step in plan.steps)
     answers: list[str] = []
     actions: list[dict[str, Any]] = []
@@ -276,8 +325,9 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
         if step.kind in {"information", "recommend"}:
             question = step.text
             cart_lines = request.context.cart.get("lines", [])
+            field = _requested_information(step.text)
             if step.kind == "information" and not _menu_mentions(question) and (
-                _option_terms(question) or re.search(
+                _option_terms(question) or field != step.text or re.search(
                     r"가격|얼마|카페인|칼로리|당류|영양|알레르기|용량|맛|설명|성분|옵션|가능",
                     question,
                 )
@@ -285,8 +335,16 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 pending_mentions = _menu_mentions(request.context.cart.get("pending_question") or "")
                 if pending_mentions:
                     question = f"{pending_mentions[-1][2]} {question}"
-                elif len(cart_lines) == 1:
-                    question = f"{cart_lines[0]['menu_name']}에 {question}"
+                else:
+                    drink_ids = {menu["id"] for menu in CATALOG["menus"] if menu["type"] == "음료"}
+                    drinks = [line for line in cart_lines if line.get("menu_id") in drink_ids]
+                    if len(drinks) == 1:
+                        question = f"{drinks[0]['menu_name']}에 {question}"
+                    elif len(cart_lines) == 1:
+                        question = f"{cart_lines[0]['menu_name']}에 {question}"
+            if field != step.text and field in {"카페인", "칼로리", "당류", "알레르기", "가격", "용량"}:
+                menu_mentions = _menu_mentions(question)
+                question = f"{menu_mentions[-1][2]} {field}만 간결히 알려 주세요" if menu_mentions else f"{field}만 간결히 알려 주세요"
             conditions = request.context.prior_conditions
             if step.kind == "recommend" and re.search(r"잘\s*모르겠|아무거나", question):
                 conditions = {**(conditions or {})}
@@ -356,11 +414,17 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
             else:
                 answers.append("진행 중인 온도 질문을 확인하기 어려워요. 메뉴와 온도를 다시 알려 주세요.")
                 status = "partial" if actions else "needs_clarification"
-        elif step.kind in {"add", "update_option", "update_quantity", "remove", "replace",
+        elif step.kind in {"add", "update_option", "update_quantity", "update_temperature", "remove", "replace",
                            "show_cart", "clear_cart", "finish_ordering", "confirm_order", "set_dine_option"}:
             if step.kind == "add" and not _menu_id(step.menu_term) and step.ordinal is None:
                 candidates = _menu_candidates(step.menu_term)
                 if len(candidates) > 1:
+                    category = _category_term(step.menu_term or "")
+                    if category and step.quantity is None:
+                        names = ", ".join(menu["name"] for menu in candidates)
+                        answers.append(f"{category} 종류는 {names}가 있어요. 원하는 종류와 수량을 알려 주세요.")
+                        status = "partial" if actions else "needs_clarification"
+                        continue
                     answers.append(f"어떤 {step.menu_term} 메뉴를 말씀하시는 건가요? 아래에서 골라 주세요.")
                     choices.extend(RagChoice(field="menu_group_id", value=menu["id"],
                                              label=menu["name"], source_id=menu["id"])
@@ -402,7 +466,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                     status = "partial" if actions else "needs_clarification" if alternative_ids else "not_found"
                     unavailable_handled = True
                     continue
-            action, problem, suggestion = _action(step, request.context.cart, last_menu, recommended)
+            action, problem, suggestion = _action(step, request.context.cart, request.context.pending, last_menu, recommended)
             if action:
                 actions.append(action)
                 last_menu = action.get("menu_id", last_menu)
@@ -433,7 +497,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
         status = "needs_clarification"
 
     pending_question = request.context.cart.get("pending_question")
-    if pending_question and not actions and (
+    if request.context.pending and pending_question and not actions and (
         unavailable_handled or all(step.kind in {"information", "recommend"} for step in plan.steps)
     ):
         next_action = "resume_pending_question"

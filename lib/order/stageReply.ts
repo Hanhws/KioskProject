@@ -21,13 +21,13 @@ const CASH = /^현금(?:\s*돼요\?)?$/;
 const DONE = /^(?:그게\s*다예요|이제\s*됐어요|다\s*됐어요|더\s*없어요|없어요|없습니다|괜찮아요|주문할게요|결제할게요|계산할게요)$/;
 
 export function interpretStageReply(state: OrderState, rawText: string): EngineAction[] | null {
-  const text = rawText.trim().replace(/[.!]+$/, "").trim();
+  const text = rawText.trim().replace(/[.!~〜]+$/, "").trim();
   if (!text || text.length > 20) return null;
   const pending = state.pending;
 
   if (pending?.kind === "temperature") {
     const hot = HOT.test(text);
-    const ice = ICE.test(text);
+    const ice = ICE.test(text.replace(/^ice\s+요$/i, "ice요"));
     if (hot === ice) return null; // 둘 다 있거나 둘 다 없으면 서버가 판단 (HTI 8.2)
     return [{ ...pending.action, temperature: hot ? "HOT" : "ICE", pending_resolution: true }];
   }

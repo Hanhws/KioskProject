@@ -82,6 +82,8 @@ export interface LineTarget {
   menu_id?: string;
   menu_ids?: string[];
   temperature?: Temperature;
+  /** 온도를 기다리는 아직 담기 전 주문 초안 */
+  pending?: boolean;
 }
 
 /**

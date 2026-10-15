@@ -124,6 +124,7 @@ describe("장바구니 (cart)", () => {
 
     const typed = interpretStageReply(asked.state, "아이스요");
     expect(typed).not.toBeNull();
+    expect(interpretStageReply(asked.state, "ice 요~")).toMatchObject([{ pending_resolution: true, temperature: "ICE" }]);
     const done = run(asked.state, ...typed!);
     expect(done.state.lines[0].temperature).toBe("ICE");
     expect(done.state.pending).toBeNull();

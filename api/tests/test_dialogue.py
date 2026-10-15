@@ -335,6 +335,7 @@ class DialogueTests(unittest.TestCase):
     def test_information_during_pending_order_requests_resume_without_actions(self):
         body = request("너 AI야?")
         body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
+        body["context"]["pending"] = {"kind": "temperature", "action": {"type": "add_item", "menu_id": "MENU-002"}}
         result = self.client.post("/api/chat", json=body).json()
         self.assertNotIn("cart_actions", result)
         self.assertEqual(result["next_action"], "resume_pending_question")
@@ -371,10 +372,76 @@ class DialogueTests(unittest.TestCase):
     def test_pending_menu_information_uses_menu_name_and_resumes(self):
         body = request("카페인은요?")
         body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
+        body["context"]["pending"] = {"kind": "temperature", "action": {"type": "add_item", "menu_id": "MENU-002"}}
         result = self.client.post("/api/chat", json=body).json()
         self.assertEqual(self.rag.questions[-1], "카페라떼 카페인은요")
         self.assertNotIn("cart_actions", result)
         self.assertEqual(result["next_action"], "resume_pending_question")
+
+    def test_completed_drink_information_and_colloquial_temperature_change(self):
+        cake = {**LATTE_LINE, "line_id": "L2", "menu_id": "MENU-028", "menu_name": "치즈케이크", "temperature": None}
+        lines = [LATTE_LINE, cake]
+        info = self.chat("카페이능ㄴ요?", lines)
+        self.assertEqual(self.rag.questions[-1], "카페라떼 카페인만 간결히 알려 주세요")
+        self.assertNotIn("cart_actions", info)
+        self.assertIsNone(info["next_action"])
+        changed = self.chat("ice 요~", lines)
+        self.assertEqual(changed["cart_actions"], [
+            {"type": "update_item", "target": {"line_id": "L1"}, "temperature": "ICE"},
+        ])
+        self.assertEqual(len(self.rag.questions), 1)
+
+    def test_temperature_change_only_targets_drinks_and_asks_if_ambiguous(self):
+        another = {**LATTE_LINE, "line_id": "L3", "menu_id": "MENU-001", "menu_name": "아메리카노"}
+        result = self.chat("ice 요~", [LATTE_LINE, another])
+        self.assertEqual(result["cart_actions"], [
+            {"type": "update_item", "target": {"menu_ids": ["MENU-002", "MENU-001"]}, "temperature": "ICE"},
+        ])
+        self.assertEqual(self.rag.questions, [])
+
+    def test_colloquial_cake_category_keeps_explicit_drink_quantity(self):
+        result = self.chat("음 아메리카노 2잔이랑 케이꾸")
+        self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-001", "quantity": 2}])
+        self.assertEqual(result["choices"], [])
+        self.assertTrue(all(name in result["answer"] for name in ("치즈케이크", "티라미수케이크", "초코무스케이크")))
+        self.assertIn("종류와 수량", result["answer"])
+        self.assertEqual(self.rag.questions, [])
+        self.assertNotIn("MENU-002", result["related_menu_ids"])
+
+    def test_pending_draft_edits_use_structured_pending_target_without_rag(self):
+        body = pending_latte("샷 추가")
+        body["context"]["pending"]["action"]["menu_id"] = "MENU-001"
+        self.assertEqual(self.client.post("/api/chat", json=body).json()["cart_actions"], [
+            {"type": "update_item", "target": {"pending": True}, "set_options": {"OPT-001": 1}},
+        ])
+        body["message"] = "3잔으로 변경해도"
+        body["context"]["pending"]["action"]["options"] = {"OPT-001": 1}
+        self.assertEqual(self.client.post("/api/chat", json=body).json()["cart_actions"], [
+            {"type": "update_item", "target": {"pending": True}, "quantity": 3},
+        ])
+        body["message"] = "샷 제거 해줘 걍"
+        body["context"]["pending"]["action"]["quantity"] = 3
+        self.assertEqual(self.client.post("/api/chat", json=body).json()["cart_actions"], [
+            {"type": "update_item", "target": {"pending": True}, "set_options": {"OPT-001": 0}},
+        ])
+        self.assertEqual(self.rag.questions, [])
+
+    def test_live_rule_planner_keeps_clear_draft_edits_and_category_local(self):
+        rag = RecordingRAG()
+        with TestClient(create_app(rag, live_planner_without_model())) as client:
+            draft = client.post("/api/chat", json=pending_latte("샷 추가")).json()
+            category = client.post("/api/chat", json=request("음 아메리카노 2잔이랑 케이꾸")).json()
+        self.assertEqual(draft["cart_actions"][0]["target"], {"pending": True})
+        self.assertEqual(category["cart_actions"][0]["quantity"], 2)
+        self.assertEqual(rag.questions, [])
+
+    def test_same_menu_in_cart_and_pending_draft_requires_target(self):
+        body = pending_latte("샷 추가")
+        body["context"]["cart"]["lines"] = [LATTE_LINE]
+        result = self.client.post("/api/chat", json=body).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertIn("어느 쪽", result["answer"])
+        self.assertEqual(self.rag.questions, [])
 
     def test_recommendation_order_first_item_and_exclusion_across_turns(self):
         rag = RecommendationRAG()

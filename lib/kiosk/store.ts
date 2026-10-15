@@ -108,11 +108,19 @@ function handleServer(state: KioskState, response: ChatResponse): KioskState {
     pendingMenuConfirmation: confirmationId,
   };
   const failed = !!response.error;
-  if (response.answer) {
+  const hasActions = !!response.cart_actions?.length;
+  const midOrder = !!state.order.pending || (state.order.stage !== "greeting" && state.order.stage !== "complete");
+  const resumes = !hasActions && midOrder && (
+    response.status === "out_of_scope" || response.next_action === "resume_pending_question" || failed
+  );
+  const prompt = resumes ? stagePrompt(state.order) : null;
+  const resume = prompt ? response.resume_prompt || (state.order.pending ? `아까 ${prompt.text}` : prompt.text) : "";
+  const answer = [response.answer, resume && !response.answer.includes(resume) ? resume : ""].filter(Boolean).join("\n");
+  if (answer) {
     next = push(next, {
       role: "kiosk",
-      text: response.answer,
-      choices: mapRagChoices(response.choices ?? [], state.order),
+      text: answer,
+      choices: [...mapRagChoices(response.choices ?? [], state.order), ...(prompt?.choices ?? [])],
       menuIds,
       tone: failed ? "error" : undefined,
       evidence: response.evidence_document_ids,
@@ -128,22 +136,6 @@ function handleServer(state: KioskState, response: ChatResponse): KioskState {
     return applyEngine(next, response.cart_actions);
   }
 
-  // HTI 8.4.2: 딴 질문에 답한 뒤 멈췄던 단계의 질문을 다시 한다
-  const order = next.order;
-  const midOrder = !!order.pending || (order.stage !== "greeting" && order.stage !== "complete");
-  const offTopic = response.status === "out_of_scope" || response.next_action === "resume_pending_question";
-  if (midOrder && (offTopic || failed)) {
-    const prompt = stagePrompt(order);
-    const resume = response.resume_prompt || (order.pending ? `아까 ${prompt.text}` : prompt.text);
-    if (resume && !response.answer.includes(resume)) {
-      next = push(next, {
-        role: "kiosk",
-        text: resume,
-        choices: prompt.choices,
-        menuIds: [],
-      });
-    }
-  }
   return next;
 }
 

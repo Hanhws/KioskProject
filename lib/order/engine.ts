@@ -344,6 +344,11 @@ function handleUpdate(s: OrderState, ctx: Ctx, action: Extract<CartAction, { typ
   }
   if (item.quantity !== line.quantity) changes.push(`수량 ${item.quantity}${unitWord(line.menuId)}`);
 
+  if (changes.length === 0) {
+    ctx.texts.push(action.temperature ? `${lineSpoken(line)}는 이미 ${temperatureLabel(line.temperature)}로 담겨 있어요.` : `${lineSpoken(line)}에서 바뀐 내용이 없어요.`);
+    return;
+  }
+
   const updated: Omit<CartLine, "lineId"> = {
     menuId: line.menuId,
     variantId: item.variant.id,
@@ -695,6 +700,33 @@ export interface EngineResult {
  * 나머지는 state.queued에 보관했다가 답을 받은 뒤 이어서 처리한다.
  */
 export function runActions(prev: OrderState, actions: EngineAction[], opts: EngineOptions = {}): EngineResult {
+  if (actions.length === 1 && actions[0].type === "update_item" && actions[0].target.pending) {
+    const action = actions[0];
+    if (prev.pending?.kind !== "temperature") {
+      return { state: prev, reply: { text: "수정할 주문 초안이 없어요.", choices: [], menuIds: [] } };
+    }
+    const draft = prev.pending.action;
+    const options = action.replace_options ? { ...(action.set_options ?? {}) } : { ...draft.options, ...action.set_options };
+    for (const [id, count] of Object.entries(options)) if (count <= 0) delete options[id];
+    const revised: AddAction = {
+      ...draft,
+      quantity: action.quantity ?? draft.quantity,
+      options,
+      temperature: action.temperature ?? draft.temperature,
+    };
+    const validation = validateItem({ menuId: revised.menu_id, temperature: revised.temperature, quantity: revised.quantity, options });
+    const issues = validation.ok ? [] : validation.issues.filter((issue) => issue.code !== "temperature_required");
+    if (issues.length) {
+      return { state: prev, reply: { text: issues.map((issue) => issue.message).join("\n"), choices: stagePrompt(prev).choices, menuIds: [] } };
+    }
+    const state = structuredClone(prev);
+    if (state.pending?.kind !== "temperature") throw new Error("pending changed during draft update");
+    state.pending.action = revised;
+    const changed = action.quantity !== undefined ? `수량을 ${revised.quantity}${unitWord(revised.menu_id)}으로 바꿨어요.`
+      : action.set_options ? `주문 초안의 옵션을 ${Object.keys(options).length ? optionLabels(options).join(", ") : "없음"}으로 바꿨어요.`
+      : "주문 초안을 수정했어요.";
+    return { state, reply: { text: changed, choices: stagePrompt(state).choices, menuIds: [] } };
+  }
   if (prev.pending && actions.length && !resolvesPending(prev, actions[0]) && actions[0].type !== "cancel_pending") {
     const immediate = actions.every((action) =>
       ["add_item", "update_item", "remove_item", "replace_menu", "set_dine_option", "show_cart"].includes(action.type),
