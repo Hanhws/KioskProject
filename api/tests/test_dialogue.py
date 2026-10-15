@@ -510,6 +510,21 @@ class DialogueTests(unittest.TestCase):
 
 
 class PaymentRequestTests(unittest.TestCase):
+    def test_recommendation_recovery_asks_one_question_without_resolving_pending_order(self):
+        class RecoveryRAG:
+            def ask(self, question, **kwargs):
+                return {"answer": "조건을 하나 바꿔서 찾아볼까요?", "status": "no_candidates",
+                        "choices": [{"field": "free_text", "value": "free_text", "label": "조건 바꾸기", "source_id": None}],
+                        "related_menu_ids": [], "evidence_document_ids": []}
+
+        body = pending_latte("천 원 이하로 추천해 주세요")
+        with TestClient(create_app(RecoveryRAG())) as client:
+            result = client.post("/api/chat", json=body).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertIsNone(result["next_action"])
+        self.assertIsNone(result["resume_prompt"])
+        self.assertEqual(result["answer"].count("?"), 1)
+
     def test_situation_turn_uses_llm_plan_and_preserves_pending_order(self):
         class SituationModel:
             def invoke(self, prompt):

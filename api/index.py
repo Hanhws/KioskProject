@@ -348,6 +348,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
     prior_conditions = None
     last_menu: str | None = None
     unavailable_handled = False
+    recommendation_needs_answer = False
 
     valid_ids = {menu["id"] for menu in CATALOG["menus"]}
     menu_names = {menu["id"]: menu["name"] for menu in CATALOG["menus"]}
@@ -393,6 +394,8 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 prior_conditions=conditions,
                 recent_history=[row.model_dump() for row in request.history[-6:]],
             )
+            if step.kind == "recommend" and result.get("status") in {"no_candidates", "needs_clarification"}:
+                recommendation_needs_answer = True
             if result.get("answer"):
                 answers.append(str(result["answer"]))
             result_choices = [RagChoice.model_validate(row) for row in result.get("choices", [])]
@@ -548,7 +551,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
         status = "needs_clarification"
 
     pending_question = request.context.cart.get("pending_question")
-    if request.context.pending and pending_question and not actions and (
+    if request.context.pending and pending_question and not actions and not recommendation_needs_answer and (
         unavailable_handled or any(step.kind in {"information", "recommend"} for step in plan.steps)
     ):
         next_action = "resume_pending_question"

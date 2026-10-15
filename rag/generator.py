@@ -132,6 +132,101 @@ def normalize_query_plan(
     return plan
 
 
+HARD_RECOMMENDATION_FIELDS = (
+    "temperature", "max_price_krw", "max_caffeine_mg", "decaf_required", "required_type",
+    "required_category", "required_sweetness_level", "required_coffee_strength",
+    "required_situations", "preferred_terms",
+)
+
+
+def verified_recommendation_constraints(
+    plan: QueryPlan, data: RagData, question: str, prior: Optional[dict[str, Any]] = None,
+    *, trusted_plan: bool = False,
+) -> dict[str, Any]:
+    """사용자 원문으로 확인한 제한만 필터에 두고 추론은 순위 조건으로 옮긴다.
+
+    hard_constraints는 서버가 생성하는 누적 조건이다. 이전 버전의 상태는 유효한
+    카탈로그 값만 이관하며 가격·카페인·알레르기 제한을 임의로 완화하지 않는다.
+    """
+    prior = prior or {}
+    vocabulary = recommendation_attributes(data)
+    aliases = {"required_type": "type", "required_category": "category",
+               "required_sweetness_level": "sweetness_level", "required_coffee_strength": "coffee_strength",
+               "required_situations": "recommended_situations"}
+    searchable = normalize_text(" ".join(str(v or "") for menu in data.catalog_by_id.values() for v in menu.values()))
+
+    def valid(field, value):
+        if value is None or value == []:
+            return False
+        if field in aliases:
+            if field == "required_situations":
+                return isinstance(value, list) and all(v in vocabulary[aliases[field]] for v in value)
+            return isinstance(value, str) and value in vocabulary[aliases[field]]
+        if field == "preferred_terms":
+            return isinstance(value, list) and all(normalize_text(v) and normalize_text(v) in searchable for v in value)
+        if field == "temperature":
+            return value in {"HOT", "ICE"}
+        if field in {"max_price_krw", "max_caffeine_mg"}:
+            return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+        return isinstance(value, bool)
+
+    def grounded(field, value, quote):
+        text = normalize_text(quote)
+        if not text or text not in normalize_text(question):
+            return False
+        if field in {"max_price_krw", "max_caffeine_mg"}:
+            unit = "원" if field == "max_price_krw" else "mg|밀리그램"
+            numeric_text = re.sub(r"[,\s]", "", quote).lower()
+            for word, number in {"일": "1", "이": "2", "삼": "3", "사": "4", "오": "5", "육": "6", "칠": "7", "팔": "8", "구": "9", "한": "1", "두": "2"}.items():
+                numeric_text = re.sub(word + r"(?=천|만)", number, numeric_text)
+            amounts = re.findall(r"(\d+(?:\.\d+)?)(천|만)?(?:" + unit + r")", numeric_text)
+            return any(float(number) * {"": 1, "천": 1000, "만": 10000}[scale] == value for number, scale in amounts)
+        if field == "temperature":
+            return bool(re.search(r"따뜻|뜨거|핫|hot" if value == "HOT" else r"아이스|차갑|차가|시원|ice", text))
+        if field == "decaf_required":
+            return "디카페인" in text
+        if field == "required_type":
+            positive = bool(re.search(r"음료|마실|마시" if value == "음료" else r"디저트|간식|먹을", text))
+            return positive and not bool(re.search(normalize_text(value) + r"(?:는|은)?(?:말고|빼|제외)", text))
+        if field == "required_coffee_strength" and value == "없음":
+            return bool(re.search(r"커피.*(?:말고|빼|제외|싫|안|않|별로|없는|없이)", text))
+        if field == "required_coffee_strength" and value == "진함":
+            return bool(re.search(r"진한|진하|진함|진하게", text))
+        if field == "required_category" and value == "티":
+            return "차" in text or "티" in text
+        if field == "required_category" and value == "커피" and re.search(r"커피.*(?:말고|빼|제외|싫|않|별로)", text):
+            return False
+        if field == "required_sweetness_level":
+            return bool(re.search({"높음": r"달달|달콤|단거|단음료|당충전", "낮음": r"달지|덜달|안단|단건싫", "보통": r"보통|적당"}[value], text))
+        values = value if isinstance(value, list) else [value]
+        return all(normalize_text(v) in text for v in values)
+
+    recorded = prior.get("hard_constraints")
+    old = recorded if isinstance(recorded, dict) else prior
+    hard = {field: old[field] for field in HARD_RECOMMENDATION_FIELDS if field in old and valid(field, old[field])}
+    defaults = QueryPlan()
+    evidence = {row.field: row.quote for row in plan.constraint_evidence}
+    for field in HARD_RECOMMENDATION_FIELDS:
+        value = getattr(plan, field)
+        quote = evidence.get(field, "")
+        quoted = normalize_text(quote)
+        if (not valid(field, value) and isinstance(value, str) and quoted
+                and quoted in normalize_text(question) and normalize_text(value) in quoted
+                and field in plan.explicit_constraint_updates):
+            # 명시했지만 카탈로그로 확인할 수 없는 제한은 조용히 없애지 않고 확인한다.
+            hard.setdefault("_unsupported", []).append(quote)
+        accepted = valid(field, value) and (trusted_plan or grounded(field, value, quote))
+        if accepted and (field not in hard or trusted_plan or field in plan.explicit_constraint_updates):
+            hard[field] = value
+        elif value is not None and value != [] and field not in hard:
+            values = value if isinstance(value, list) else [value]
+            allowed = {v for items in vocabulary.values() for v in items}
+            plan.inferred_preferences.extend(v for v in values if isinstance(v, str) and v in allowed)
+        setattr(plan, field, hard.get(field, getattr(defaults, field)))
+    plan.inferred_preferences = list(dict.fromkeys(plan.inferred_preferences))[:6]
+    return hard
+
+
 def policy_context(data: RagData) -> str:
     return json.dumps(
         [

@@ -15,6 +15,24 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class SituationRecommendationTests(unittest.TestCase):
+    def test_constraint_evidence_has_fixed_object_schema_for_structured_output(self):
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+        schema = convert_to_openai_tool(QueryPlan, strict=True)["function"]["parameters"]
+
+        def check(node):
+            if not isinstance(node, dict):
+                return
+            if node.get("type") == "object":
+                self.assertIs(node.get("additionalProperties"), False)
+                self.assertEqual(set(node.get("required", [])), set(node.get("properties", {})))
+            for value in node.values():
+                if isinstance(value, dict):
+                    check(value)
+                elif isinstance(value, list):
+                    for item in value:
+                        check(item)
+        check(schema)
+
     @classmethod
     def setUpClass(cls):
         cls.data = load_rag_data(ROOT / "data/megacoffee_rag_enriched")
@@ -75,7 +93,7 @@ class SituationRecommendationTests(unittest.TestCase):
         for updates, expected in [([], 3000), (["max_price_krw"], 5000)]:
             with self.subTest(updates=updates):
                 result = self.ask("이제 5천 원까지 괜찮아", QueryPlan(intent="recommend", max_price_krw=5000,
-                                  explicit_constraint_updates=updates), {"max_price_krw": 3000})
+                                  explicit_constraint_updates=updates, constraint_evidence=[{"field": "max_price_krw", "quote": "5천 원"}] if updates else []), {"max_price_krw": 3000})
                 self.assertEqual(result["applied_conditions"]["max_price_krw"], expected)
 
     def test_unsupported_inferred_properties_do_not_become_claims_or_hard_filters(self):
@@ -91,7 +109,8 @@ class SituationRecommendationTests(unittest.TestCase):
                           {"max_price_krw": 1})
         self.assertEqual(result["status"], "no_candidates")
         self.assertEqual(result["related_menu_ids"], [])
-        self.assertEqual(result["choices"], [])
+        self.assertEqual(result["choices"][0]["value"], "free_text")
+        self.assertIn("바꿔서", result["answer"])
 
     def test_emotion_sharing_does_not_force_recommendation_or_erase_filters(self):
         prior = {"max_price_krw": 3000, "excluded_allergens": ["우유"]}
@@ -129,6 +148,64 @@ class SituationRecommendationTests(unittest.TestCase):
                           situation_response="달콤한 음료가 우울함 개선에 도움이 돼요."))
         self.assertNotIn("도움", result["answer"])
         self.assertNotIn("개선", result["answer"])
+
+    def test_cold_then_sleepiness_does_not_accumulate_inferred_hard_filters(self):
+        cold = self.ask("감기 걸릴 것 같은데 추천해 줘", QueryPlan(
+            intent="recommend", required_category="따뜻한 차", temperature="HOT", max_caffeine_mg=0,
+            inferred_preferences=["티", "향긋함"], situation_response="몸이 좋지 않으신가 봐요.",
+            explicit_constraint_updates=["temperature"], constraint_evidence=[{"field": "temperature", "quote": "감기 걸릴 것"}],
+        ), draft=AnswerDraft(answer="조건이 없어요", status="no_candidates"))
+        self.assertEqual(cold["status"], "ok")
+        self.assertTrue(cold["related_menu_ids"])
+        self.assertEqual(cold["applied_conditions"]["hard_constraints"], {})
+        self.assertIsNone(cold["query_plan"]["temperature"])
+        self.assertIsNone(cold["query_plan"]["max_caffeine_mg"])
+        sleepy = self.ask("나 좀 졸려 ㅋㅋ", QueryPlan(
+            intent="recommend", required_category="커피", max_caffeine_mg=0,
+            inferred_preferences=["커피", "진함"], situation_response="많이 졸리신가 봐요.",
+        ), cold["applied_conditions"])
+        self.assertEqual(sleepy["status"], "ok")
+        self.assertEqual(sleepy["related_menu_ids"][0], "MENU-001")
+        self.assertEqual(sleepy["applied_conditions"]["hard_constraints"], {})
+
+    def test_explicit_constraints_survive_situations_and_other_recommendations(self):
+        first = self.ask("우유 빼고 커피 말고 4천 원 이하로 추천해 줘", QueryPlan(
+            intent="recommend", max_price_krw=4000, required_coffee_strength="없음", excluded_allergens=["우유"],
+            constraint_evidence=[{"field": "max_price_krw", "quote": "4천 원 이하"}, {"field": "required_coffee_strength", "quote": "커피 말고"}],
+        ))
+        self.assertEqual(first["applied_conditions"]["hard_constraints"], {"max_price_krw": 4000, "required_coffee_strength": "없음"})
+        prior = {**first["applied_conditions"], "excluded_menu_ids": first["related_menu_ids"]}
+        next_result = self.ask("피곤한데 다른 거 추천해 줘", QueryPlan(
+            intent="recommend", required_coffee_strength="진함", max_price_krw=10000,
+            inferred_preferences=["커피", "진함"],
+        ), prior)
+        self.assertEqual(next_result["applied_conditions"]["hard_constraints"], first["applied_conditions"]["hard_constraints"])
+        self.assertEqual(next_result["applied_conditions"]["excluded_allergens"], ["우유"])
+        self.assertFalse(set(next_result["related_menu_ids"]) & set(first["related_menu_ids"]))
+        for menu_id in next_result["related_menu_ids"]:
+            menu = self.data.catalog_by_id[menu_id]
+            self.assertEqual(menu["coffee_strength"], "없음")
+            self.assertTrue(any(v["price_krw"] <= 4000 for v in self.data.variants_by_menu_name[menu["menu_name"]]))
+
+    def test_legacy_invalid_category_and_emotion_search_term_are_not_retained(self):
+        result = self.ask("졸려", QueryPlan(intent="recommend", inferred_preferences=["커피"]),
+                          {"required_category": "따뜻한 차", "preferred_terms": ["감기"]})
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["related_menu_ids"])
+        self.assertEqual(result["applied_conditions"]["hard_constraints"], {})
+
+    def test_unknown_explicit_property_is_not_silently_removed(self):
+        result = self.ask("무설탕만 추천해 줘", QueryPlan(intent="recommend", required_category="무설탕",
+                          explicit_constraint_updates=["required_category"], constraint_evidence=[{"field": "required_category", "quote": "무설탕만"}]))
+        self.assertEqual(result["related_menu_ids"], [])
+        self.assertIn("확인하기 어려워요", result["answer"])
+        self.assertEqual(result["answer"].count("?"), 1)
+
+    def test_decimal_and_korean_budget_quotes_are_checked_against_amount(self):
+        for question, amount in [("3.5천 원 이하로 추천", 3500), ("삼천원 이하로 추천", 3000)]:
+            result = self.ask(question, QueryPlan(intent="recommend", max_price_krw=amount,
+                              constraint_evidence=[{"field": "max_price_krw", "quote": question}]))
+            self.assertEqual(result["applied_conditions"]["hard_constraints"]["max_price_krw"], amount)
 
 
 if __name__ == "__main__":

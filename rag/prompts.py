@@ -15,6 +15,11 @@ Intent = Literal[
 ]
 
 
+class ConstraintEvidence(BaseModel):
+    field: str
+    quote: str
+
+
 class QueryPlan(BaseModel):
     intent: Intent = "general"
     menu_terms: list[str] = Field(default_factory=list)
@@ -32,6 +37,7 @@ class QueryPlan(BaseModel):
     inferred_preferences: list[str] = Field(default_factory=list, description="상황·감정에서 추론한 선호. 실제 추천 속성 값만 사용하며 필수 조건이 아닌 순위 기준")
     situation_response: Optional[str] = Field(default=None, max_length=100, description="상황을 받아 주는 짧은 한 문장. 메뉴·성분·건강 효과는 말하지 않음")
     explicit_constraint_updates: list[str] = Field(default_factory=list, description="현재 발화에서 사용자가 명시적으로 변경한 필수 조건의 필드명. 감정으로 추측한 변경은 넣지 않음")
+    constraint_evidence: list[ConstraintEvidence] = Field(default_factory=list, description="필수 조건의 field와 현재 사용자 입력에서 그대로 인용한 quote. 상황에서 추측한 조건에는 근거를 만들지 않음")
     excluded_menu_ids: list[str] = Field(default_factory=list)
     excluded_allergens: list[str] = Field(default_factory=list)
     option_terms: list[str] = Field(default_factory=list)
@@ -125,6 +131,10 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
   예: '많이 피곤하신가 봐요.', '점심을 못 드셨군요.', '좋은 일이 있으셨나 봐요.'처럼 공감만 합니다.
   '달콤한 메뉴가 도움이 돼요', '피로가 회복돼요' 같은 효과 표현은 사용하지 않습니다.
 - 이전 필수 조건은 유지하고, 사용자가 명시적으로 바꾼 필드만 explicit_constraint_updates에 기록합니다.
+  처음 지정한 조건도 constraint_evidence에 필드명과 현재 입력의 원문 구절을 함께 기록합니다.
+  예: '커피 말고 4천 원 이하'는 [{{'field': 'required_coffee_strength', 'quote': '커피 말고'}}, {{'field': 'max_price_krw', 'quote': '4천 원 이하'}}].
+  '감기 기운', '졸려', '우울해'는 온도·카테고리·카페인 상한의 명시적 근거가 아닙니다.
+  추측한 조건은 반드시 inferred_preferences에만 두고, 원문에 없는 카페인 상한·메뉴 분류를 만들지 않습니다.
   예: '이제 5천 원까지 괜찮아'는 max_price_krw 변경, '피곤해'만으로는 카페인 상한이나 커피 제외 조건을 바꾸지 않습니다.
 - '다른 추천'에서는 이전 조건을 유지하고 이전 추천 메뉴 ID를 excluded_menu_ids에 둡니다.
 - intent='compare'인데 비교 기준이 없을 때만 requested_fields에 맛·가격·커피 진하기를 넣습니다.

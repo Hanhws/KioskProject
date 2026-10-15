@@ -19,6 +19,24 @@ function response(partial: Partial<ChatResponse>): ChatResponse {
 }
 
 describe("서버 응답 처리 (store)", () => {
+  it("추천 조건 재확인 중에도 보류·대기 주문을 유지하고 온도 답 뒤 원래 주문을 담는다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002" }, { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    const before = structuredClone(state.order);
+    const conditions = { hard_constraints: { max_price_krw: 1 }, max_price_krw: 1 };
+    state = kioskReducer(state, { type: "server", response: response({
+      answer: "말씀하신 조건에 맞는 다른 메뉴가 없어요. 조건을 하나 바꿔서 찾아볼까요?",
+      status: "no_candidates", prior_conditions: conditions,
+      choices: [{ field: "free_text", value: "free_text", label: "조건 바꾸기", source_id: null }],
+    }) });
+    expect(state.order).toEqual(before);
+    expect(state.priorConditions).toEqual(conditions);
+    expect(state.messages.at(-1)?.text.match(/\?/g)).toHaveLength(1);
+    state = kioskReducer(state, { type: "engine", actions: interpretStageReply(state.order, "아이스요")! });
+    expect(state.order.lines.map((line) => line.menuId)).toEqual(["MENU-002", "MENU-028"]);
+    expect(priceCart(state.order.lines).total).toBe(7600);
+  });
   it("8.2 충돌 주문은 수량·옵션을 보류하고 온도 답 뒤 대기 케이크와 한 번씩 담긴다", () => {
     let state = kioskReducer(initialKioskState(), { type: "server", response: response({
       status: "partial", cart_actions: [
