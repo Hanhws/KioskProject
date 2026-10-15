@@ -1,0 +1,354 @@
+"""질문 계획 생성, 답변 생성, 근거 값 검증."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from copy import deepcopy
+from typing import Any, Iterable, Optional
+
+from langchain_openai import ChatOpenAI
+
+from .data_loader import RagConfig, RagData, normalize_text
+from .menu_lookup import variants_for_menu_id
+from .prompts import (
+    ANSWER_PROMPT,
+    PLANNER_PROMPT,
+    AnswerClaim,
+    AnswerDraft,
+    QueryPlan,
+)
+from .retriever import RetrievedEvidence, evidence_to_context
+
+
+def make_llm(config: RagConfig) -> ChatOpenAI:
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        raise RuntimeError("OPENAI_API_KEY가 설정되지 않았습니다.")
+    return ChatOpenAI(model=config.answer_model, temperature=0)
+
+
+def plan_question(
+    question: str,
+    data: RagData,
+    config: RagConfig,
+    prior_conditions: Optional[dict[str, Any]] = None,
+    previous_requested_fields: Optional[list[str]] = None,
+    recent_history: Optional[list[dict[str, str]]] = None,
+) -> QueryPlan:
+    planner = PLANNER_PROMPT | make_llm(config).with_structured_output(
+        QueryPlan, method="json_schema"
+    )
+    return planner.invoke({
+        "question": question,
+        "prior_conditions": json.dumps(prior_conditions or {}, ensure_ascii=False),
+        "previous_requested_fields": json.dumps(
+            previous_requested_fields or [], ensure_ascii=False
+        ),
+        "recent_history": json.dumps(
+            recent_history or [], ensure_ascii=False
+        ),
+        "types": sorted({menu["type"] for menu in data.tables["menu_catalog"]}),
+        "categories": sorted({menu["category"] for menu in data.tables["menu_catalog"]}),
+    })
+
+
+HIGH_SWEETNESS_PATTERNS = (
+    "달달한", "달콤한", "단거", "단음료", "당충전", "디저트같은", "엄청단",
+)
+NEGATIVE_SWEETNESS_PATTERNS = (
+    "달달하지않", "달콤하지않", "달지않", "안단", "덜단",
+    "단맛적은", "단건싫", "단거말고", "단음료말고",
+)
+EXPLICIT_RECOMMENDATION_DETAIL_PATTERNS = (
+    "가격", "얼마", "카페인", "칼로리", "당류", "영양", "알레르기", "용량", "성분",
+    "설명", "특징", "어떤맛", "맛은", "맛도", "비교",
+)
+
+
+def _contains_any(normalized_text: str, patterns: tuple[str, ...]) -> bool:
+    return any(normalize_text(pattern) in normalized_text for pattern in patterns)
+
+
+def normalize_query_plan(
+    plan: QueryPlan,
+    data: RagData,
+    question: str = "",
+) -> QueryPlan:
+    """LLM 계획의 명백한 오해석만 기존 QueryPlan 필드 안에서 보정한다."""
+    normalized_question = normalize_text(question)
+    positive_sweetness = _contains_any(
+        normalized_question, HIGH_SWEETNESS_PATTERNS
+    )
+    negative_sweetness = _contains_any(
+        normalized_question, NEGATIVE_SWEETNESS_PATTERNS
+    )
+    if plan.intent == "recommend" and positive_sweetness and not negative_sweetness:
+        plan.required_sweetness_level = "높음"
+        plan.preferred_terms = [
+            term
+            for term in plan.preferred_terms
+            if not _contains_any(normalize_text(term), HIGH_SWEETNESS_PATTERNS)
+        ]
+
+    if (
+        plan.intent == "recommend"
+        and not _contains_any(
+            normalized_question, EXPLICIT_RECOMMENDATION_DETAIL_PATTERNS
+        )
+    ):
+        plan.requested_fields = []
+
+    if plan.intent == "compare" and not plan.requested_fields:
+        plan.requested_fields = ["맛", "가격", "커피 진하기"]
+    plan.excluded_menu_ids = sorted(
+        set(plan.excluded_menu_ids) & set(data.catalog_by_id)
+    )
+    plan.clarification_count = max(0, plan.clarification_count)
+    return plan
+
+
+def policy_context(data: RagData) -> str:
+    return json.dumps(
+        [
+            {
+                "policy_id": row["policy_id"],
+                "topic": row["topic"],
+                "response_policy": row["response_policy"],
+                "source_type": row["source_type"],
+            }
+            for row in data.tables["faq_policy"]
+        ],
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def source_record(source_id: str, data: RagData) -> Optional[dict[str, Any]]:
+    if source_id in data.catalog_by_id:
+        return data.catalog_by_id[source_id]
+    if source_id in data.variant_by_id:
+        return data.variant_by_id[source_id]
+    if source_id.startswith("DETAIL-") and source_id.removeprefix("DETAIL-") in data.variant_by_id:
+        return data.variant_by_id[source_id.removeprefix("DETAIL-")]
+    if source_id in data.option_by_id:
+        return data.option_by_id[source_id]
+    if source_id in data.policy_by_id:
+        return data.policy_by_id[source_id]
+    for table_name, id_field in [
+        ("pairings", "pairing_id"),
+        ("rag_documents", "document_id"),
+    ]:
+        row = next(
+            (row for row in data.tables[table_name] if row.get(id_field) == source_id),
+            None,
+        )
+        if row:
+            return row
+    return None
+
+
+def claim_value_matches(actual: Any, claimed: str) -> bool:
+    if actual is None:
+        return False
+    actual_text = str(actual)
+    claimed_text = str(claimed)
+    temperature_aliases = {
+        "HOT": {"hot", "따뜻한", "뜨거운"},
+        "ICE": {"ice", "아이스", "차가운", "시원한"},
+    }
+    if actual_text in temperature_aliases:
+        normalized_claim = normalize_text(claimed_text)
+        return any(
+            normalize_text(alias) in normalized_claim
+            for alias in temperature_aliases[actual_text]
+        )
+    actual_digits = re.sub(r"[^0-9.-]", "", actual_text)
+    claimed_digits = re.sub(r"[^0-9.-]", "", claimed_text)
+    if actual_digits and claimed_digits:
+        return actual_digits == claimed_digits
+    return normalize_text(actual_text) == normalize_text(claimed_text)
+
+
+def validate_answer_claims(
+    claims: Iterable[AnswerClaim], data: RagData
+) -> tuple[list[dict[str, str]], list[str]]:
+    strict_fields = {
+        "temperature", "price_krw", "volume_ml", "calories_kcal",
+        "sugar_g", "protein_g", "saturated_fat_g", "caffeine_mg",
+        "sodium_mg", "cholesterol_mg", "carbohydrate_g", "fat_g",
+        "trans_fat_g", "decaf_available", "size_policy",
+        "max_quantity", "price_delta_krw",
+    }
+    valid, issues = [], []
+    for claim in claims:
+        record = source_record(claim.source_id, data)
+        if (
+            record is not None
+            and claim.field in record
+            and claim_value_matches(record.get(claim.field), claim.value)
+        ):
+            valid.append(claim.model_dump())
+            continue
+
+        candidate_rows: list[tuple[str, dict[str, Any]]] = []
+        if claim.source_id in data.catalog_by_id:
+            candidate_rows.extend(
+                (variant["variant_id"], variant)
+                for variant in variants_for_menu_id(data, claim.source_id)
+            )
+        matching_rows = [
+            (source_id, row)
+            for source_id, row in candidate_rows
+            if claim.field in row
+            and claim_value_matches(row.get(claim.field), claim.value)
+        ]
+        if matching_rows:
+            corrected_source_id, _ = matching_rows[0]
+            valid.append({
+                "field": claim.field,
+                "value": claim.value,
+                "source_id": corrected_source_id,
+            })
+            continue
+
+        if claim.field in strict_fields:
+            if record is None:
+                issues.append(f"확인할 수 없는 근거 ID: {claim.source_id}")
+            elif claim.field not in record:
+                issues.append(f"{claim.source_id}에 없는 필드: {claim.field}")
+            else:
+                issues.append(
+                    f"근거와 다른 값: {claim.source_id}.{claim.field}={claim.value}"
+                )
+    return valid, issues
+
+
+def generate_rag_answer(
+    question: str,
+    plan: QueryPlan,
+    resolved: dict[str, Any],
+    exact_facts: dict[str, Any],
+    evidence: list[RetrievedEvidence],
+    data: RagData,
+    config: RagConfig,
+) -> AnswerDraft:
+    answer_exact_facts = scope_exact_facts_for_answer(plan, resolved, exact_facts)
+    answer_evidence = evidence_to_context(evidence)
+    if plan.intent == "menu_info" and plan.requested_fields and resolved.get("exact_menu_ids"):
+        # 정확한 메뉴를 특정해 한두 항목만 물은 경우에는 전체 문서를 함께 주지 않는다.
+        # 전체 문서의 가격·용량·카페인 등이 답변에 불필요하게 따라붙는 것을 막고,
+        # 아래에서 요청 항목만 남긴 정확 조회 사실을 답변 근거로 사용한다.
+        answer_evidence = "정확 조회 사실의 요청 항목만 사용하세요."
+    chain = ANSWER_PROMPT | make_llm(config).with_structured_output(
+        AnswerDraft, method="json_schema"
+    )
+    return chain.invoke({
+        "question": question,
+        "plan": json.dumps(plan.model_dump(), ensure_ascii=False, indent=2),
+        "resolved": json.dumps(resolved, ensure_ascii=False, indent=2),
+        "retrieved_context": answer_evidence,
+        "exact_facts": json.dumps(answer_exact_facts, ensure_ascii=False, indent=2),
+        "policies": policy_context(data),
+    })
+
+
+def scope_exact_facts_for_answer(
+    plan: QueryPlan,
+    resolved: dict[str, Any],
+    exact_facts: dict[str, Any],
+) -> dict[str, Any]:
+    """정확한 단일 메뉴 정보 질문에는 사용자가 요청한 필드만 LLM에 노출한다."""
+    if (
+        plan.intent != "menu_info"
+        or not plan.requested_fields
+        or not resolved.get("exact_menu_ids")
+    ):
+        return exact_facts
+
+    normalized_fields = {normalize_text(field) for field in plan.requested_fields}
+    catalog_fields = {"menu_group_id", "menu_name", "type", "category"}
+    variant_fields = {
+        "variant_id", "base_menu_name", "display_name", "temperature", "data_source",
+    }
+
+    field_aliases = {
+        "price_krw": ("가격", "price"),
+        "price_summary": ("가격", "price"),
+        "volume_ml": ("용량", "volume", "ml"),
+        "calories_kcal": ("칼로리", "calorie", "kcal"),
+        "sugar_g": ("당류", "당", "sugar"),
+        "protein_g": ("단백질", "protein"),
+        "saturated_fat_g": ("포화지방", "saturatedfat"),
+        "caffeine_mg": ("카페인", "caffeine"),
+        "sodium_mg": ("나트륨", "sodium"),
+        "cholesterol_mg": ("콜레스테롤", "cholesterol"),
+        "carbohydrate_g": ("탄수화물", "carbohydrate"),
+        "fat_g": ("지방", "fat"),
+        "trans_fat_g": ("트랜스지방", "transfat"),
+        "allergens": ("알레르기", "알러지", "allergen"),
+        "allergen_note": ("알레르기", "알러지", "allergen"),
+        "decaf_available": ("디카페인", "decaf"),
+        "size_policy": ("사이즈", "size"),
+        "available_temperatures": ("온도", "hot", "ice", "따뜻", "아이스"),
+        "short_description": ("설명", "특징", "맛", "description", "flavor"),
+        "rich_description": ("설명", "특징", "맛", "description", "flavor"),
+        "flavor_tags": ("설명", "특징", "맛", "description", "flavor"),
+        "sweetness_level": ("설명", "특징", "맛", "당도", "sweet"),
+        "coffee_strength": ("설명", "특징", "맛", "커피진하기", "strength"),
+        "acidity_level": ("설명", "특징", "맛", "산미", "acidity"),
+        "texture": ("설명", "특징", "맛", "질감", "texture"),
+    }
+    nutrition_requested = any(
+        token in field
+        for field in normalized_fields
+        for token in ("영양", "nutrition")
+    )
+    description_requested = any(
+        token in field
+        for field in normalized_fields
+        for token in ("설명", "description")
+    )
+
+    for key, aliases in field_aliases.items():
+        if any(
+            normalize_text(alias) in field or field in normalize_text(alias)
+            for field in normalized_fields
+            for alias in aliases
+        ):
+            catalog_fields.add(key)
+            variant_fields.add(key)
+    if nutrition_requested:
+        variant_fields.update({
+            "calories_kcal", "sugar_g", "protein_g", "saturated_fat_g",
+            "caffeine_mg", "sodium_mg", "cholesterol_mg", "carbohydrate_g",
+            "fat_g", "trans_fat_g",
+        })
+    if description_requested:
+        catalog_fields.update({
+            "short_description", "rich_description", "flavor_tags",
+            "sweetness_level", "coffee_strength", "acidity_level", "texture",
+            "price_summary",
+        })
+        variant_fields.add("price_krw")
+
+    scoped = deepcopy(exact_facts)
+    scoped["resolved_menus"] = [
+        {
+            "catalog": {
+                key: value
+                for key, value in item.get("catalog", {}).items()
+                if key in catalog_fields
+            },
+            "variants": [
+                {
+                    key: value
+                    for key, value in variant.items()
+                    if key in variant_fields
+                }
+                for variant in item.get("variants", [])
+            ],
+        }
+        for item in exact_facts.get("resolved_menus", [])
+    ]
+    return scoped

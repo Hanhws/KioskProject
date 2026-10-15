@@ -1,0 +1,390 @@
+import { describe, expect, it } from "vitest";
+import type { ChatResponse } from "../lib/api";
+import { buildChatRequest, confirmSuggestedMenu, initialKioskState, kioskReducer, mapRagChoices } from "../lib/kiosk/store";
+import { initialOrderState } from "../lib/order/engine";
+import { priceCart } from "../lib/order/pricing";
+
+function response(partial: Partial<ChatResponse>): ChatResponse {
+  return {
+    answer: "",
+    status: "ok",
+    choices: [],
+    related_menu_ids: [],
+    next_action: null,
+    resume_prompt: null,
+    error: null,
+    ...partial,
+  };
+}
+
+describe("서버 응답 처리 (store)", () => {
+  it("추천 응답: 메뉴 카드와 선택 버튼, 직전 추천 목록 저장", () => {
+    const state = kioskReducer(
+      initialKioskState(),
+      {
+        type: "server",
+        response: response({
+          answer: "카페모카, 초코라떼를 추천해요.",
+          next_action: "choose_menu",
+          related_menu_ids: ["MENU-006", "MENU-008", "NOT-A-MENU"],
+          choices: [
+            { field: "menu_group_id", value: "MENU-006", label: "카페모카", source_id: "MENU-006" },
+            { field: "free_text", value: "free_text", label: "직접 입력", source_id: null },
+          ],
+        }),
+      },
+    );
+    const last = state.messages[state.messages.length - 1];
+    expect(last.menuIds).toEqual(["MENU-006", "MENU-008"]);
+    expect(last.choices[0].action).toEqual({ type: "add_item", menu_id: "MENU-006" });
+    expect(last.choices[1].action).toEqual({ type: "focus_input" });
+    expect(state.lastRecommended).toEqual(["MENU-006", "MENU-008"]);
+  });
+
+  it("cart_actions가 오면 엔진으로 담고 결과를 이어서 안내 (4.4)", () => {
+    const state = kioskReducer(initialKioskState(), {
+      type: "server",
+      response: response({
+        answer: "",
+        cart_actions: [
+          { type: "add_item", menu_id: "MENU-001", temperature: "ICE", quantity: 2 },
+          { type: "add_item", menu_id: "MENU-028" },
+        ],
+      }),
+    });
+    expect(state.order.lines).toHaveLength(2);
+    expect(state.messages[state.messages.length - 1].text).toContain("총 9,200원");
+  });
+
+  it("8.4.2 무관한 질문 뒤 멈췄던 온도 질문을 다시 한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [{ type: "add_item", menu_id: "MENU-002" }] });
+    state = kioskReducer(state, {
+      type: "server",
+      response: response({ answer: "저는 주문을 돕는 키오스크예요.", status: "out_of_scope" }),
+    });
+    const last = state.messages[state.messages.length - 1];
+    expect(last.text).toBe("저는 주문을 돕는 키오스크예요.\n아까 카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?");
+    expect(last.choices).toHaveLength(2);
+  });
+
+  it("요청에 장바구니·멈춘 질문·직전 추천이 함께 간다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [{ type: "add_item", menu_id: "MENU-002" }] });
+    state = { ...state, lastRecommended: ["MENU-006"] };
+    const request = buildChatRequest(state, "너 AI야?");
+    expect(request.context.cart.pending_question).toBe("카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?");
+    expect(request.context.pending).toEqual({ kind: "temperature", action: { type: "add_item", menu_id: "MENU-002" } });
+    expect(request.context.last_recommended_menu_ids).toEqual(["MENU-006"]);
+  });
+
+  it("HTI 3.6 추천 순서는 다른 정보 질문 뒤에도 유지한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "server", response: response({
+      answer: "초코라떼, 카페모카를 추천해요.", next_action: "choose_menu",
+      related_menu_ids: ["MENU-008", "MENU-006"],
+    }) });
+    state = kioskReducer(state, { type: "user_text", text: "아메리카노 가격도 알려 주세요" });
+    state = kioskReducer(state, { type: "server", response: response({
+      answer: "가격 안내", related_menu_ids: ["MENU-001"],
+    }) });
+    expect(buildChatRequest(state, "첫 번째 걸로 주세요").context.last_recommended_menu_ids).toEqual(["MENU-008", "MENU-006"]);
+  });
+
+  it("HTI 8.5 오타 후보를 확인하는 입력은 같은 메뉴의 담기 액션으로 이어진다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "server", response: response({
+      answer: "바닐라라떼를 말씀하셨나요?", status: "needs_clarification", next_action: "confirm_menu",
+      choices: [{ field: "menu_group_id", value: "MENU-004", label: "바닐라라떼", source_id: "MENU-004" }],
+      related_menu_ids: ["MENU-004"],
+    }) });
+    const action = confirmSuggestedMenu(state, "네, 맞아요");
+    expect(action).toEqual([{ type: "add_item", menu_id: "MENU-004" }]);
+    state = kioskReducer(state, { type: "engine", actions: action!, echo: "네, 맞아요" });
+    expect(state.order.pending?.kind).toBe("temperature");
+    expect(state.pendingMenuConfirmation).toBeNull();
+  });
+
+  it("HTI 8.4.2 주문 중 정보 질문은 보류·대기 액션을 보존하고 질문을 재개한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002" },
+      { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    expect(state.order.pending?.kind).toBe("temperature");
+    expect(state.order.queued).toHaveLength(1);
+    state = kioskReducer(state, { type: "user_text", text: "너 AI야?" });
+    state = kioskReducer(state, { type: "server", response: response({
+      answer: "저는 주문을 돕는 키오스크예요.", next_action: "resume_pending_question",
+    }) });
+    expect(state.order.pending?.kind).toBe("temperature");
+    expect(state.order.queued).toHaveLength(1);
+    expect(state.messages.at(-1)?.text).toContain("카페라떼는 따뜻한 것과 아이스 중");
+    state = kioskReducer(state, { type: "engine", actions: [{ type: "add_item", menu_id: "MENU-002", temperature: "ICE", pending_resolution: true }] });
+    expect(state.order.lines.map((line) => line.menuId)).toEqual(["MENU-002", "MENU-028"]);
+  });
+
+  it("보류된 라떼와 케이크는 정보 질문 뒤에도 남고 ICE 답에 정확히 한 번 담긴다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "server", response: response({ cart_actions: [
+      { type: "add_item", menu_id: "MENU-002" }, { type: "add_item", menu_id: "MENU-028" },
+    ] }) });
+    state = kioskReducer(state, { type: "user_text", text: "카페인은요?" });
+    const req = buildChatRequest(state, "카페인은요?");
+    expect(req.context.pending?.kind).toBe("temperature");
+    expect(state.order.queued).toHaveLength(1);
+    state = kioskReducer(state, { type: "server", response: response({
+      answer: "[시험 RAG] 카페인 정보", next_action: "resume_pending_question",
+      resume_prompt: req.context.cart.pending_question,
+    }) });
+    expect(state.order.queued).toHaveLength(1);
+    state = kioskReducer(state, { type: "engine", actions: [{ type: "add_item", menu_id: "MENU-002", temperature: "ICE", pending_resolution: true }] });
+    expect(state.order.lines.map((line) => [line.menuId, line.quantity])).toEqual([["MENU-002", 1], ["MENU-028", 1]]);
+    expect(state.order.pending).toBeNull();
+    expect(state.order.queued).toHaveLength(0);
+  });
+
+  it("보류 중 없는 메뉴의 대안은 선택 전에는 담지 않고 선택 후 원래 주문을 이어 간다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002" }, { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    const before = structuredClone(state.order);
+    state = kioskReducer(state, { type: "user_text", text: "브라우니 주세요" });
+    state = kioskReducer(state, { type: "server", response: response({
+      answer: "브라우니는 담지 않았어요. 대안을 골라 주세요.",
+      related_menu_ids: ["MENU-030", "MENU-032"],
+      choices: [
+        { field: "menu_group_id", value: "MENU-030", label: "초코무스케이크", source_id: "MENU-030" },
+        { field: "menu_group_id", value: "MENU-032", label: "메가쿠키（초코칩）", source_id: "MENU-032" },
+      ],
+      next_action: "resume_pending_question",
+      resume_prompt: "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?",
+    }) });
+    expect(state.order).toEqual(before);
+    const alternative = state.messages.at(-1)!.choices[0].action;
+    expect(alternative.type).toBe("add_item");
+    if (alternative.type !== "add_item") throw new Error("alternative must add a catalog item");
+    state = kioskReducer(state, { type: "engine", actions: [alternative] });
+    expect(state.order.lines.map((line) => line.menuId)).toEqual(["MENU-030"]);
+    expect(state.order.pending?.kind).toBe("temperature");
+    expect(state.order.queued).toHaveLength(1);
+    state = kioskReducer(state, { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002", temperature: "ICE", pending_resolution: true },
+    ] });
+    expect(state.order.lines.map((line) => [line.menuId, line.quantity])).toEqual([
+      ["MENU-030", 1], ["MENU-002", 1], ["MENU-028", 1],
+    ]);
+  });
+
+  it("최종 확인 중 모호한 쿠키는 선택 후 변경된 합계로 다시 확인한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "set_dine_option", value: "takeout" }, { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    state = kioskReducer(state, { type: "engine", actions: [{ type: "finish_ordering" }] });
+    expect(state.order.stage).toBe("final_confirm");
+    state = kioskReducer(state, { type: "user_text", text: "네, 그런데 쿠키도 추가요" });
+    state = kioskReducer(state, { type: "server", response: response({
+      answer: "어떤 쿠키 메뉴를 말씀하시는 건가요?", status: "needs_clarification",
+      related_menu_ids: ["MENU-031", "MENU-032"],
+      choices: [
+        { field: "menu_group_id", value: "MENU-031", label: "메가쿠키（마카다미아）", source_id: "MENU-031" },
+        { field: "menu_group_id", value: "MENU-032", label: "메가쿠키（초코칩）", source_id: "MENU-032" },
+      ],
+    }) });
+    expect(state.order.stage).toBe("final_confirm");
+    const selected = state.messages.at(-1)!.choices[1].action;
+    expect(selected.type).toBe("add_item");
+    if (selected.type !== "add_item") throw new Error("cookie choice must add an item");
+    state = kioskReducer(state, { type: "engine", actions: [selected] });
+    expect(state.order.lines.map((line) => line.menuId)).toEqual(["MENU-028", "MENU-032"]);
+    expect(state.messages.at(-1)?.text).toContain("이대로 주문할까요?");
+    expect(state.order.stage).toBe("final_confirm");
+  });
+
+  it("보류 중 장바구니 확인은 합계를 보여 주고 원래 보류·대기 액션을 유지한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-001", temperature: "ICE" },
+    ] });
+    state = kioskReducer(state, { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002" }, { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    const before = structuredClone(state.order);
+    state = kioskReducer(state, { type: "server", response: response({
+      cart_actions: [{ type: "show_cart" }],
+    }) });
+    expect(state.order).toEqual(before);
+    expect(state.messages.at(-2)?.text).toContain("총 2,500원");
+    expect(state.messages.at(-1)?.text).toContain("카페라떼는 따뜻한 것과 아이스 중");
+  });
+
+  it("silent 조작은 질문이 없으면 대화창에 남기지 않는다", () => {
+    let state = kioskReducer(initialKioskState(), {
+      type: "engine",
+      actions: [{ type: "add_item", menu_id: "MENU-028" }],
+    });
+    const count = state.messages.length;
+    state = kioskReducer(state, {
+      type: "engine",
+      actions: [{ type: "update_item", target: { menu_id: "MENU-028" }, quantity: 2 }],
+      echo: "수량 변경",
+      silent: true,
+    });
+    expect(state.messages).toHaveLength(count);
+    expect(state.order.lines[0].quantity).toBe(2);
+  });
+
+  it("온도 선택지는 보류 중인 메뉴에 적용된다", () => {
+    const order = { ...initialOrderState(), pending: { kind: "temperature" as const, action: { type: "add_item" as const, menu_id: "MENU-003" }, question: "?" } };
+    const [choice] = mapRagChoices([{ field: "temperature", value: "ICE", label: "아이스", source_id: null }], order);
+    expect(choice.action).toEqual({ type: "add_item", menu_id: "MENU-003", temperature: "ICE", pending_resolution: true });
+  });
+
+  it("정보 질문 응답과 근거를 표시해도 기존 항목·옵션·수량·총액은 유지된다", () => {
+    let state = kioskReducer(initialKioskState(), {
+      type: "engine",
+      actions: [{ type: "add_item", menu_id: "MENU-002", temperature: "ICE", options: { "OPT-001": 1 }, quantity: 2 }],
+    });
+    const before = structuredClone(state.order);
+    const totalBefore = priceCart(before.lines).total;
+    state = kioskReducer(state, { type: "user_text", text: "아메리카노 가격 알려 주세요" });
+    state = kioskReducer(state, {
+      type: "server",
+      response: response({
+        answer: "[개발·시험용 가짜 RAG 응답] 아메리카노 가격 질문을 받았습니다.",
+        evidence_document_ids: ["FAKE-RAG-001"],
+      }),
+    });
+    expect(state.order).toEqual(before);
+    expect(priceCart(state.order.lines).total).toBe(totalBefore);
+    expect(state.messages.at(-1)).toMatchObject({ evidence: ["FAKE-RAG-001"] });
+  });
+
+  it("정보 답변 뒤 같은 응답의 주문 액션을 기존 엔진으로 실행한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "user_text", text: "라떼 얼마예요? 그거 아이스로 두 잔 주세요" });
+    state = kioskReducer(state, {
+      type: "server",
+      response: response({
+        answer: "[시험 RAG] 아이스 카페라떼는 3,400원이에요.",
+        evidence_document_ids: ["TEST-EVIDENCE"],
+        cart_actions: [{ type: "add_item", menu_id: "MENU-002", temperature: "ICE", quantity: 2 }],
+      }),
+    });
+    expect(state.order.lines).toMatchObject([{ menuId: "MENU-002", temperature: "ICE", quantity: 2 }]);
+    expect(priceCart(state.order.lines).total).toBe(6800);
+    expect(state.messages.some((message) => message.evidence?.includes("TEST-EVIDENCE"))).toBe(true);
+  });
+
+  it("온도가 빠진 복수 주문은 기존 엔진이 질문하고 나머지 액션을 보관한다", () => {
+    let state = kioskReducer(initialKioskState(), {
+      type: "server",
+      response: response({ cart_actions: [
+        { type: "add_item", menu_id: "MENU-001" },
+        { type: "add_item", menu_id: "MENU-028" },
+      ] }),
+    });
+    expect(state.order.pending?.kind).toBe("temperature");
+    expect(state.order.queued).toHaveLength(1);
+    state = kioskReducer(state, { type: "engine", actions: [{ type: "add_item", menu_id: "MENU-001", temperature: "ICE", pending_resolution: true }] });
+    expect(state.order.lines.map((line) => line.menuId)).toEqual(["MENU-001", "MENU-028"]);
+  });
+
+  it("HTI 4.4 복수 주문은 기존 가격 계산으로 합계 9,200원이 된다", () => {
+    const state = kioskReducer(initialKioskState(), {
+      type: "server",
+      response: response({ cart_actions: [
+        { type: "add_item", menu_id: "MENU-001", temperature: "ICE", quantity: 2 },
+        { type: "add_item", menu_id: "MENU-028" },
+      ] }),
+    });
+    expect(state.order.lines.map((line) => line.quantity)).toEqual([2, 1]);
+    expect(priceCart(state.order.lines).total).toBe(9200);
+  });
+
+  it("담긴 유일한 음료의 온도만 바꾸고 정보 질문이나 동일 온도로 다시 담지 않는다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002", temperature: "HOT" },
+      { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    const cake = structuredClone(state.order.lines[1]);
+    state = kioskReducer(state, { type: "user_text", text: "카페이능ㄴ요?" });
+    state = kioskReducer(state, { type: "server", response: response({ answer: "[시험 RAG] 카페인 정보" }) });
+    expect(state.order.lines).toHaveLength(2);
+    expect(state.order.pending).toBeNull();
+    const before = state.messages.length;
+    state = kioskReducer(state, { type: "user_text", text: "ice 요~" });
+    state = kioskReducer(state, { type: "server", response: response({ cart_actions: [
+      { type: "update_item", target: { line_id: state.order.lines[0].lineId }, temperature: "ICE" },
+    ] }) });
+    expect(state.order.lines).toHaveLength(2);
+    expect(state.order.lines[0].temperature).toBe("ICE");
+    expect(state.order.lines[1]).toEqual(cake);
+    expect(priceCart(state.order.lines).total).toBe(7600);
+    expect(state.messages.length).toBe(before + 2);
+    const totalBefore = priceCart(state.order.lines).total;
+    state = kioskReducer(state, { type: "server", response: response({ cart_actions: [
+      { type: "update_item", target: { line_id: state.order.lines[0].lineId }, temperature: "ICE" },
+    ] }) });
+    expect(state.order.lines).toHaveLength(2);
+    expect(priceCart(state.order.lines).total).toBe(totalBefore);
+    expect(state.messages.at(-1)?.text).toContain("이미 아이스로 담겨");
+  });
+
+  it("음료가 여럿이면 디저트를 제외하고 온도 변경 대상을 확인한다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-002", temperature: "HOT" },
+      { type: "add_item", menu_id: "MENU-001", temperature: "HOT" },
+      { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    state = kioskReducer(state, { type: "server", response: response({ cart_actions: [
+      { type: "update_item", target: { menu_ids: ["MENU-002", "MENU-001"] }, temperature: "ICE" },
+    ] }) });
+    expect(state.order.pending?.kind).toBe("target");
+    expect(state.messages.at(-1)?.choices).toHaveLength(2);
+    expect(state.order.lines.map((line) => line.temperature)).toEqual(["HOT", "HOT", null]);
+  });
+
+  it("케이크 미선택 주문의 음료 2잔 초안은 유지하고 선택 전 케이크를 담지 않는다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "server", response: response({
+      answer: "치즈케이크, 티라미수케이크, 초코무스케이크 중 종류와 수량을 알려 주세요.",
+      cart_actions: [{ type: "add_item", menu_id: "MENU-001", quantity: 2 }],
+    }) });
+    expect(state.order.lines).toHaveLength(0);
+    expect(state.order.pending?.kind).toBe("temperature");
+    if (state.order.pending?.kind !== "temperature") throw new Error("temperature draft expected");
+    expect(state.order.pending.action.quantity).toBe(2);
+    expect(state.messages.at(-2)?.choices).toHaveLength(0);
+    state = kioskReducer(state, { type: "engine", actions: [
+      { ...state.order.pending.action, temperature: "ICE", pending_resolution: true },
+    ] });
+    expect(state.order.lines.map((line) => [line.menuId, line.quantity])).toEqual([["MENU-001", 2]]);
+    expect(priceCart(state.order.lines).total).toBe(5000);
+  });
+
+  it("담기 전 초안의 샷·수량·샷 제거를 반영하고 대기 케이크와 함께 한 번만 담는다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "engine", actions: [
+      { type: "add_item", menu_id: "MENU-001" }, { type: "add_item", menu_id: "MENU-028" },
+    ] });
+    const edits = [
+      { type: "update_item" as const, target: { pending: true }, set_options: { "OPT-001": 1 } },
+      { type: "update_item" as const, target: { pending: true }, quantity: 3 },
+      { type: "update_item" as const, target: { pending: true }, set_options: { "OPT-001": 0 } },
+    ];
+    for (const [index, edit] of edits.entries()) {
+      const count = state.messages.length;
+      state = kioskReducer(state, { type: "server", response: response({ cart_actions: [edit] }) });
+      expect(state.messages.length).toBe(count + 1);
+      expect(state.order.queued).toEqual([{ type: "add_item", menu_id: "MENU-028" }]);
+      expect(state.order.pending?.kind).toBe("temperature");
+      if (state.order.pending?.kind !== "temperature") throw new Error("temperature draft expected");
+      expect(state.order.pending.action.options).toEqual(index === 2 ? {} : { "OPT-001": 1 });
+      expect(state.order.pending.action.quantity ?? 1).toBe(index === 0 ? 1 : 3);
+      expect(buildChatRequest(state, "아이스요").context.pending?.action).toMatchObject(state.order.pending.action);
+    }
+    if (state.order.pending?.kind !== "temperature") throw new Error("temperature draft expected");
+    expect(state.order.pending.action.quantity).toBe(3);
+    expect(state.order.pending.action.options).toEqual({});
+    state = kioskReducer(state, { type: "engine", actions: [
+      { ...state.order.pending.action, temperature: "ICE", pending_resolution: true },
+    ] });
+    expect(state.order.lines.map((line) => [line.menuId, line.quantity, line.options])).toEqual([
+      ["MENU-001", 3, {}], ["MENU-028", 1, {}],
+    ]);
+    expect(priceCart(state.order.lines).total).toBe(11700);
+    expect(state.order.pending).toBeNull();
+    expect(state.order.queued).toHaveLength(0);
+  });
+});

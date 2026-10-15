@@ -1,0 +1,29 @@
+{
+  "signature": {
+    "schema": "langchain-document-faiss-v1",
+    "embedding_text_format": "labeled-title-keywords-content-v1",
+    "embedding_model": "text-embedding-3-small",
+    "data_sha256": "52902620d5d0b3dc8284913fa38cd1e492cba15a92ce2c73c207f441cfb73cf8",
+    "document_count": 132
+  },
+  "input_validation": {
+    "passed": true,
+    "document_count": 132,
+    "count_method": [
+      "tiktoken"
+    ],
+    "max_document_index": 22,
+    "max_document_tokens": 599,
+    "max_batch_tokens": 25115,
+    "max_input_tokens": 8192,
+    "max_request_tokens": 300000
+  },
+  "embedding_export": {
+    "path": "rag/rag_embeddings.json",
+    "document_count": 132,
+    "vector_dimension": 1536,
+    "sha256": "f8dcea52027a526a10154749afd1fc3571d6dc98a7640a905255ff8e0765895b",
+    "bytes": 4291368
+  },
+  "index_action": "rebuilt"
+}

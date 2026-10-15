@@ -1,0 +1,1888 @@
+{
+  "generatedFrom": "data/megacoffee_rag_enriched",
+  "menus": [
+    {
+      "id": "MENU-001",
+      "type": "음료",
+      "category": "커피",
+      "name": "아메리카노",
+      "aliases": [
+        "아메리카노",
+        "아아",
+        "아이스 아메리카노",
+        "뜨아",
+        "따뜻한 아메리카노"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "(기본 2샷) 블렌드 원두로 추출한 에스프레소에 물을 더해, 풍부한 바디감을 느낄 수 있는 스탠다드 커피",
+      "flavorTags": [
+        "에스프레소",
+        "고소함",
+        "쌉싸름함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "진함",
+      "variants": [
+        {
+          "id": "MEGA-001",
+          "displayName": "（HOT）아메리카노",
+          "temperature": "HOT",
+          "price": 2200,
+          "volumeMl": 355,
+          "caffeineMg": 137,
+          "allergens": null,
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%95%84%EB%A9%94%EB%A6%AC%EC%B9%B4%EB%85%B8_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-002",
+          "displayName": "（ICE）아메리카노",
+          "temperature": "ICE",
+          "price": 2500,
+          "volumeMl": 473,
+          "caffeineMg": 137,
+          "allergens": null,
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-03-27%2F%EC%A0%9C%ED%9C%B4FR_20240326_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%95%84%EB%A9%94%EB%A6%AC%EC%B9%B4%EB%85%B8_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-002",
+      "type": "음료",
+      "category": "커피",
+      "name": "카페라떼",
+      "aliases": [
+        "카페라떼",
+        "카페 라떼",
+        "라떼",
+        "아이스 라떼",
+        "따뜻한 라떼"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "진한 에스프레소와 부드러운 우유가 어우러져 고소한 풍미를 완성한 라떼",
+      "flavorTags": [
+        "우유",
+        "고소함",
+        "부드러움"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "보통",
+      "variants": [
+        {
+          "id": "MEGA-003",
+          "displayName": "（HOT）카페라떼",
+          "temperature": "HOT",
+          "price": 3400,
+          "volumeMl": 355,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%B9%B4%ED%8E%98%EB%9D%BC%EB%96%BC_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-004",
+          "displayName": "（ICE）카페라떼",
+          "temperature": "ICE",
+          "price": 3400,
+          "volumeMl": 473,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-05-07%2F%EC%A0%9C%ED%9C%B4FR_20240503_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%B9%B4%ED%8E%98%EB%9D%BC%EB%96%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-003",
+      "type": "음료",
+      "category": "커피",
+      "name": "카푸치노",
+      "aliases": [
+        "카푸치노",
+        "카푸치노 커피"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "에스프레소 위에 올려진 우유 거품, 그리고 시나몬 파우더로 완성한 조화로운 맛의 커피",
+      "flavorTags": [
+        "에스프레소",
+        "시나몬",
+        "고소함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "보통",
+      "variants": [
+        {
+          "id": "MEGA-005",
+          "displayName": "（HOT）카푸치노",
+          "temperature": "HOT",
+          "price": 3400,
+          "volumeMl": 355,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%B9%B4%ED%91%B8%EC%B9%98%EB%85%B8_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-006",
+          "displayName": "（ICE）카푸치노",
+          "temperature": "ICE",
+          "price": 3400,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2022-05-30%2F%EC%A0%9C%ED%9C%B4FR_20220527_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%B9%B4%ED%91%B8%EC%B9%98%EB%85%B8_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-004",
+      "type": "음료",
+      "category": "커피",
+      "name": "바닐라라떼",
+      "aliases": [
+        "바닐라라떼",
+        "바닐라 라떼",
+        "바닐라 커피"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "바닐라의 짙은 향과 풍부한 폼 밀크의 조화가 인상적인 달콤한 라떼",
+      "flavorTags": [
+        "바닐라",
+        "달콤함",
+        "우유"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "보통",
+      "variants": [
+        {
+          "id": "MEGA-007",
+          "displayName": "（HOT）바닐라라떼",
+          "temperature": "HOT",
+          "price": 3900,
+          "volumeMl": 355,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%B0%94%EB%8B%90%EB%9D%BC%EB%9D%BC%EB%96%BC_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-008",
+          "displayName": "（ICE）바닐라라떼",
+          "temperature": "ICE",
+          "price": 3900,
+          "volumeMl": 473,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-05-07%2F%EC%A0%9C%ED%9C%B4FR_20240503_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EB%B0%94%EB%8B%90%EB%9D%BC%EB%9D%BC%EB%96%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-005",
+      "type": "음료",
+      "category": "커피",
+      "name": "카라멜마끼아또",
+      "aliases": [
+        "카라멜마끼아또",
+        "카라멜마키아토",
+        "카라멜 마끼아또",
+        "카라멜 마키아토"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "폼 밀크 속에 진한 에스프레소와 달콤한 카라멜을 가미해 부드럽게 즐기는 커피",
+      "flavorTags": [
+        "카라멜",
+        "달콤함",
+        "에스프레소"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "보통",
+      "variants": [
+        {
+          "id": "MEGA-009",
+          "displayName": "（HOT）카라멜마끼아또",
+          "temperature": "HOT",
+          "price": 4200,
+          "volumeMl": 355,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%B9%B4%EB%9D%BC%EB%A9%9C%EB%A7%88%EB%81%BC%EC%95%84%EB%98%90_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-010",
+          "displayName": "（ICE）카라멜마끼아또",
+          "temperature": "ICE",
+          "price": 4200,
+          "volumeMl": 473,
+          "caffeineMg": 95,
+          "allergens": "우유",
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%B9%B4%EB%9D%BC%EB%A9%9C%EB%A7%88%EB%81%BC%EC%95%84%EB%98%90_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-006",
+      "type": "음료",
+      "category": "커피",
+      "name": "카페모카",
+      "aliases": [
+        "카페모카",
+        "모카",
+        "초코 커피"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "초코를 만나 풍부해진 에스프레소와 고소한 우유, 부드러운 휘핑크림까지 더해 달콤하게 즐기는 커피",
+      "flavorTags": [
+        "초콜릿",
+        "에스프레소",
+        "휘핑"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "보통",
+      "variants": [
+        {
+          "id": "MEGA-011",
+          "displayName": "（HOT）카페모카",
+          "temperature": "HOT",
+          "price": 4400,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%B9%B4%ED%8E%98%EB%AA%A8%EC%B9%B4_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-012",
+          "displayName": "（ICE）카페모카",
+          "temperature": "ICE",
+          "price": 4400,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "Y",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%B9%B4%ED%8E%98%EB%AA%A8%EC%B9%B4_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-007",
+      "type": "음료",
+      "category": "콜드브루",
+      "name": "콜드브루오리지널",
+      "aliases": [
+        "콜드브루오리지널",
+        "콜드브루",
+        "콜드 브루"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "차가운 물에 장시간 우려내 깔끔한 목넘김을 느낄 수 있는 콜드브루",
+      "flavorTags": [
+        "콜드브루",
+        "깊은 풍미",
+        "쌉싸름함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "진함",
+      "variants": [
+        {
+          "id": "MEGA-013",
+          "displayName": "（HOT）콜드브루오리지널",
+          "temperature": "HOT",
+          "price": 4000,
+          "volumeMl": 355,
+          "caffeineMg": 173,
+          "allergens": null,
+          "decafAvailable": "N",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%BD%9C%EB%93%9C%EB%B8%8C%EB%A3%A8-%EC%98%A4%EB%A6%AC%EC%A7%80%EB%84%90_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-014",
+          "displayName": "（ICE）콜드브루오리지널",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": 473,
+          "caffeineMg": 173,
+          "allergens": null,
+          "decafAvailable": "N",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%BD%9C%EB%93%9C%EB%B8%8C%EB%A3%A8_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-008",
+      "type": "음료",
+      "category": "논커피 라떼",
+      "name": "초코라떼",
+      "aliases": [
+        "초코라떼",
+        "초코 라떼",
+        "핫초코",
+        "아이스초코",
+        "초콜릿 라떼"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "부드러운 우유에 진한 초코소스가 어우러져 달콤하게 입맛을 깨우는 초콜릿 음료",
+      "flavorTags": [
+        "초콜릿",
+        "달콤함",
+        "우유"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-015",
+          "displayName": "핫초코",
+          "temperature": "HOT",
+          "price": 4000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%ED%95%AB%EC%B4%88%EC%BD%94_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-016",
+          "displayName": "아이스초코",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-03-27%2F%EC%A0%9C%ED%9C%B4FR_20240326_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%95%84%EC%9D%B4%EC%8A%A4%EC%B4%88%EC%BD%94_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-009",
+      "type": "음료",
+      "category": "논커피 라떼",
+      "name": "녹차라떼",
+      "aliases": [
+        "녹차라떼",
+        "녹차 라떼",
+        "그린티 라떼"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "향긋한 녹차에 우유를 더해 입 안에 부드러운 푸릇함을 선물하는 라떼",
+      "flavorTags": [
+        "녹차",
+        "쌉싸름함",
+        "우유"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-017",
+          "displayName": "（HOT）녹차라떼",
+          "temperature": "HOT",
+          "price": 4000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%85%B9%EC%B0%A8%EB%9D%BC%EB%96%BC_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-018",
+          "displayName": "（ICE）녹차라떼",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EB%85%B9%EC%B0%A8%EB%9D%BC%EB%96%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-010",
+      "type": "음료",
+      "category": "논커피 라떼",
+      "name": "고구마라떼",
+      "aliases": [
+        "고구마라떼",
+        "고구마 라떼"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "달콤한 고구마와 부드러운 우유의 만남. 남녀노소 좋아하는 인기메뉴",
+      "flavorTags": [
+        "고구마",
+        "고소함",
+        "달콤함"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-019",
+          "displayName": "（HOT）고구마라떼",
+          "temperature": "HOT",
+          "price": 4000,
+          "volumeMl": 355,
+          "caffeineMg": 2,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EA%B3%A0%EA%B5%AC%EB%A7%88%EB%9D%BC%EB%96%BC_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-020",
+          "displayName": "（ICE）고구마라떼",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": 473,
+          "caffeineMg": 2,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2022-05-30%2F%EC%A0%9C%ED%9C%B4FR_20220527_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EA%B3%A0%EA%B5%AC%EB%A7%88%EB%9D%BC%EB%96%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-011",
+      "type": "음료",
+      "category": "논커피 라떼",
+      "name": "딸기라떼",
+      "aliases": [
+        "딸기라떼",
+        "딸기 라떼"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "산뜻하고 달콤한 딸기가 부드러운 우유 속에 어우러져 더욱 상큼하게 즐기는 아이스 라떼",
+      "flavorTags": [
+        "딸기",
+        "새콤달콤",
+        "우유",
+        "과일"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-021",
+          "displayName": "（ICE）딸기라떼",
+          "temperature": "ICE",
+          "price": 4200,
+          "volumeMl": 355,
+          "caffeineMg": 0,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2026-01-14%2F%EC%A0%9C%ED%9C%B4FR_20260113_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EB%94%B8%EA%B8%B0%EB%9D%BC%EB%96%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-012",
+      "type": "음료",
+      "category": "논커피 라떼",
+      "name": "로얄밀크티라떼",
+      "aliases": [
+        "로얄밀크티라떼",
+        "로얄 밀크티",
+        "밀크티",
+        "밀크티 라떼"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "부드러운 우유에 은은한 홍차를 부어, 보드랍고 향긋한 한 모금을 완성한 라떼",
+      "flavorTags": [
+        "홍차",
+        "우유",
+        "은은한 단맛"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-022",
+          "displayName": "（HOT）로얄밀크티라떼",
+          "temperature": "HOT",
+          "price": 4200,
+          "volumeMl": 355,
+          "caffeineMg": 0,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%A1%9C%EC%96%84%EB%B0%80%ED%81%AC%ED%8B%B0%EB%9D%BC%EB%96%BC_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-023",
+          "displayName": "（ICE）로얄밀크티라떼",
+          "temperature": "ICE",
+          "price": 4200,
+          "volumeMl": 473,
+          "caffeineMg": 0,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2022-05-30%2F%EC%A0%9C%ED%9C%B4FR_20220527_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EB%A1%9C%EC%96%84%EB%B0%80%ED%81%AC%ED%8B%B0_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-013",
+      "type": "음료",
+      "category": "논커피 라떼",
+      "name": "토피넛라떼",
+      "aliases": [
+        "토피넛라떼",
+        "토피넛 라떼",
+        "토피넛"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "카라멜 향이 은은하게 퍼지며 견과의 고소한맛을 달콤하게 즐길 수 있는 음료",
+      "flavorTags": [
+        "견과류풍미",
+        "카라멜풍미",
+        "달콤함"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-024",
+          "displayName": "（HOT）토피넛라떼",
+          "temperature": "HOT",
+          "price": 4300,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%ED%86%A0%ED%94%BC%EB%84%9B%EB%9D%BC%EB%97%B4_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-025",
+          "displayName": "（ICE）토피넛라떼",
+          "temperature": "ICE",
+          "price": 4300,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%ED%86%A0%ED%94%BC%EB%84%9B%EB%9D%BC%EB%96%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-014",
+      "type": "음료",
+      "category": "티",
+      "name": "캐모마일",
+      "aliases": [
+        "캐모마일",
+        "카모마일",
+        "캐모마일 티"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "특유의 풀내음을 통해 마음을 진정 시켜주는 마일드한 허브차",
+      "flavorTags": [
+        "꽃향",
+        "은은함",
+        "허브"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-026",
+          "displayName": "（HOT）캐모마일",
+          "temperature": "HOT",
+          "price": 3000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%BA%90%EB%AA%A8%EB%A7%88%EC%9D%BC_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-027",
+          "displayName": "（ICE）캐모마일",
+          "temperature": "ICE",
+          "price": 3000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%BA%90%EB%AA%A8%EB%A7%88%EC%9D%BC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-015",
+      "type": "음료",
+      "category": "티",
+      "name": "얼그레이",
+      "aliases": [
+        "얼그레이",
+        "얼 그레이",
+        "얼그레이 티"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "홍차의 진한 향과 본연의 부드러움을 느낄 수 있는 허브차",
+      "flavorTags": [
+        "베르가못",
+        "홍차",
+        "향긋함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-028",
+          "displayName": "（HOT）얼그레이",
+          "temperature": "HOT",
+          "price": 3000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%96%BC%EA%B7%B8%EB%A0%88%EC%9D%B4_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-029",
+          "displayName": "（ICE）얼그레이",
+          "temperature": "ICE",
+          "price": 3000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%96%BC%EA%B7%B8%EB%A0%88%EC%9D%B4_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-016",
+      "type": "음료",
+      "category": "티",
+      "name": "페퍼민트",
+      "aliases": [
+        "페퍼민트",
+        "페퍼민트 티",
+        "민트티"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "입안 가득 깔끔한 청량감으로 기분까지 상쾌한 허브차",
+      "flavorTags": [
+        "민트",
+        "상쾌함",
+        "허브"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-030",
+          "displayName": "（HOT）페퍼민트",
+          "temperature": "HOT",
+          "price": 3000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%ED%8E%98%ED%8D%BC%EB%AF%BC%ED%8A%B8_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-031",
+          "displayName": "（ICE）페퍼민트",
+          "temperature": "ICE",
+          "price": 3000,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%ED%8E%98%ED%8D%BC%EB%AF%BC%ED%8A%B8_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-017",
+      "type": "음료",
+      "category": "티",
+      "name": "유자차",
+      "aliases": [
+        "유자차",
+        "유자 티"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "비타민이 가득 든 상큼달콤한 유자를 듬뿍 넣어 향긋한 즐거움을 전하는 과일티",
+      "flavorTags": [
+        "유자",
+        "새콤달콤",
+        "시트러스",
+        "과일"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-032",
+          "displayName": "（HOT）유자차",
+          "temperature": "HOT",
+          "price": 3800,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%9C%A0%EC%9E%90%EC%B0%A8_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-033",
+          "displayName": "（ICE）유자차",
+          "temperature": "ICE",
+          "price": 3800,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%9C%A0%EC%9E%90%EC%B0%A8_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-018",
+      "type": "음료",
+      "category": "티",
+      "name": "자몽차",
+      "aliases": [
+        "자몽차",
+        "자몽 티"
+      ],
+      "temperatures": [
+        "HOT",
+        "ICE"
+      ],
+      "description": "달콤쌉싸름한 자몽의 조화로운 맛을 한 잔 가득 느낄 수 있는 과일티",
+      "flavorTags": [
+        "자몽",
+        "쌉싸름함",
+        "새콤달콤",
+        "과일"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-034",
+          "displayName": "（HOT）자몽차",
+          "temperature": "HOT",
+          "price": 3800,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-06-17%2F%EC%A0%9C%ED%9C%B4FR_20240617_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%9E%90%EB%AA%BD%EC%B0%A8_HOT_1080x640.jpg?width=1080&height=640&quality=70"
+        },
+        {
+          "id": "MEGA-035",
+          "displayName": "（ICE）자몽차",
+          "temperature": "ICE",
+          "price": 3800,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_ICE-%EC%9E%90%EB%AA%BD%EC%B0%A8_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-019",
+      "type": "음료",
+      "category": "에이드·주스",
+      "name": "레몬에이드",
+      "aliases": [
+        "레몬에이드",
+        "레몬 에이드"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "레몬의 상큼함과 달콤함 그리고 탄산의 청량감을 즐길 수 있는 음료",
+      "flavorTags": [
+        "레몬",
+        "상큼함",
+        "탄산",
+        "과일"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-036",
+          "displayName": "레몬에이드",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": 473,
+          "caffeineMg": 0,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%A0%88%EB%AA%AC%EC%97%90%EC%9D%B4%EB%93%9C_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-020",
+      "type": "음료",
+      "category": "에이드·주스",
+      "name": "자몽에이드",
+      "aliases": [
+        "자몽에이드",
+        "자몽 에이드"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "자몽의 쌉싸름한 맛과 상큼함을 동시에 느낄 수 있는 음료",
+      "flavorTags": [
+        "자몽",
+        "쌉싸름함",
+        "탄산",
+        "과일"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-037",
+          "displayName": "자몽에이드",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": 473,
+          "caffeineMg": 0,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2026-03-20%2F%EC%A0%9C%ED%9C%B4FR_20260319_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%9E%90%EB%AA%BD%EC%97%90%EC%9D%B4%EB%93%9C_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-021",
+      "type": "음료",
+      "category": "에이드·주스",
+      "name": "청포도에이드",
+      "aliases": [
+        "청포도에이드",
+        "청포도 에이드"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "청포도의 상큼함과 탄산의 시원함을 느낄 수 있는 음료",
+      "flavorTags": [
+        "청포도",
+        "달콤함",
+        "탄산",
+        "과일"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-038",
+          "displayName": "청포도에이드",
+          "temperature": "ICE",
+          "price": 4000,
+          "volumeMl": 473,
+          "caffeineMg": 0,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-05-07%2F%EC%A0%9C%ED%9C%B4FR_20240503_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%B2%AD%ED%8F%AC%EB%8F%84%EC%97%90%EC%9D%B4%EB%93%9C_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-022",
+      "type": "음료",
+      "category": "에이드·주스",
+      "name": "딸기 주스",
+      "aliases": [
+        "딸기 주스",
+        "딸기주스"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "상큼달콤한 딸기 주스에 탄력에 좋은 피쉬 콜라겐을 더해 건강한 블렌딩 주스",
+      "flavorTags": [
+        "딸기",
+        "과일",
+        "새콤달콤"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-039",
+          "displayName": "딸기 주스",
+          "temperature": "ICE",
+          "price": 4500,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-12-15%2F%EC%A0%9C%ED%9C%B4FR_20211214_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%94%B8%EA%B8%B0%EC%A3%BC%EC%8A%A4_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-023",
+      "type": "음료",
+      "category": "에이드·주스",
+      "name": "멋쟁이 토마토 스무디",
+      "aliases": [
+        "멋쟁이 토마토 스무디",
+        "토마토 스무디",
+        "토마토주스",
+        "토마토 주스"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "춘천 찰토마토를 더한 상큼한 토마토 스무디에 오독오독한 펄슈가를 듬뿍 얹어 씹는 재미와 기분 좋은 단맛이 어우러진 멋쟁이 토마토 스무디",
+      "flavorTags": [
+        "토마토",
+        "담백함",
+        "과채"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-040",
+          "displayName": "멋쟁이 토마토 스무디",
+          "temperature": "ICE",
+          "price": 4200,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2026-07-08%2F%EC%A0%9C%ED%9C%B4FR_20260707_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%A9%8B%EC%9F%81%EC%9D%B4-%ED%86%A0%EB%A7%88%ED%86%A0-%EC%8A%A4%EB%AC%B4%EB%94%94_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-024",
+      "type": "음료",
+      "category": "스무디·프라페",
+      "name": "딸기요거트스무디",
+      "aliases": [
+        "딸기요거트스무디",
+        "딸기 요거트 스무디",
+        "딸기 스무디"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "남녀노소 누구나 좋아하는 딸기와 상큼한 요거트가 조화롭게 어우려진 메뉴",
+      "flavorTags": [
+        "딸기",
+        "요거트",
+        "새콤달콤",
+        "과일"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-041",
+          "displayName": "딸기요거트스무디",
+          "temperature": "ICE",
+          "price": 4400,
+          "volumeMl": 355,
+          "caffeineMg": 0,
+          "allergens": "우유",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%94%B8%EA%B8%B0%EC%9A%94%EA%B1%B0%ED%8A%B8%EC%8A%A4%EB%AC%B4%EB%94%94_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-025",
+      "type": "음료",
+      "category": "스무디·프라페",
+      "name": "골드망고스무디",
+      "aliases": [
+        "골드망고스무디",
+        "망고 스무디",
+        "망고스무디"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "황금빛 골드망고가 진하게 느껴지는 부드럽고 상큼 달콤한 스무디",
+      "flavorTags": [
+        "망고",
+        "열대과일",
+        "달콤함",
+        "과일"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-042",
+          "displayName": "골드망고스무디",
+          "temperature": "ICE",
+          "price": 4400,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-03-27%2F%EC%A0%9C%ED%9C%B4FR_20240326_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EA%B3%A8%EB%93%9C%EB%A7%9D%EA%B3%A0%EC%8A%A4%EB%AC%B4%EB%94%94_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-026",
+      "type": "음료",
+      "category": "스무디·프라페",
+      "name": "쿠키프라페",
+      "aliases": [
+        "쿠키프라페",
+        "쿠키 프라페",
+        "쿠키앤크림 프라페",
+        "쿠앤크"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "오레오 특유의 맛과 부드러운 우유, 바닐라 향이 더해진 베스트 메뉴",
+      "flavorTags": [
+        "쿠키",
+        "크림",
+        "달콤함"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-043",
+          "displayName": "쿠키프라페",
+          "temperature": "ICE",
+          "price": 4400,
+          "volumeMl": 355,
+          "caffeineMg": 60,
+          "allergens": "우유, 대두, 밀",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%BF%A0%ED%82%A4%ED%94%84%EB%9D%BC%ED%8E%98_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-027",
+      "type": "음료",
+      "category": "스무디·프라페",
+      "name": "민트프라페",
+      "aliases": [
+        "민트프라페",
+        "민트 프라페",
+        "민트초코 프라페",
+        "민초 프라페"
+      ],
+      "temperatures": [
+        "ICE"
+      ],
+      "description": "진한 민트향과 초콜릿 칩이 가득 들어있는 메뉴로, 큰 인기를 얻고 있는 베스트 메뉴",
+      "flavorTags": [
+        "민트",
+        "초콜릿풍미",
+        "달콤함"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "없음",
+      "variants": [
+        {
+          "id": "MEGA-044",
+          "displayName": "민트프라페",
+          "temperature": "ICE",
+          "price": 4400,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%AF%BC%ED%8A%B8%ED%94%84%EB%9D%BC%ED%8E%98_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-028",
+      "type": "디저트",
+      "category": "케이크",
+      "name": "치즈케이크",
+      "aliases": [
+        "치즈케이크"
+      ],
+      "temperatures": [],
+      "description": "진한 치즈의 맛을 달콤하고 부드럽게 느낄 수 있는 케이크",
+      "flavorTags": [
+        "치즈",
+        "고소함",
+        "새콤함"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-045",
+          "displayName": "치즈케이크",
+          "temperature": null,
+          "price": 4200,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "달걀,우유,대두,밀,이산화황",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2024-07-23%2F%EC%A0%9C%ED%9C%B4FR_20240722_%EB%A9%94%EA%B0%80MGC%EC%BB%A4%ED%94%BC_%EC%B9%98%EC%A6%88%EC%BC%80%EC%9D%B4%ED%81%AC_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-029",
+      "type": "디저트",
+      "category": "케이크",
+      "name": "티라미수케이크",
+      "aliases": [
+        "티라미수케이크"
+      ],
+      "temperatures": [],
+      "description": "부드러운 치즈 맛과 코코아의 조화로운 향으로 호불호 없이 즐기는 케이크",
+      "flavorTags": [
+        "커피향",
+        "코코아",
+        "크림"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-046",
+          "displayName": "티라미수케이크",
+          "temperature": null,
+          "price": 4200,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,대두,밀,돼지고기,아황산류",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%ED%8B%B0%EB%9D%BC%EB%AF%B8%EC%88%98%EC%BC%80%EC%9D%B5_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-030",
+      "type": "디저트",
+      "category": "케이크",
+      "name": "초코무스케이크",
+      "aliases": [
+        "초코무스케이크"
+      ],
+      "temperatures": [],
+      "description": "달콤한 초콜릿 본연의 맛을 더 진하게 느낄 수 있는 케이크",
+      "flavorTags": [
+        "초콜릿",
+        "달콤함",
+        "무스"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-047",
+          "displayName": "초코무스케이크",
+          "temperature": null,
+          "price": 4200,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,대두,밀,돼지고기",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%B4%88%EC%BD%94%EB%AC%B4%EC%8A%A4%EC%BC%80%EC%9D%B5_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-031",
+      "type": "디저트",
+      "category": "구움과자",
+      "name": "메가쿠키（마카다미아）",
+      "aliases": [
+        "메가쿠키(마카다미아)"
+      ],
+      "temperatures": [],
+      "description": "고소한 마카다미아를 넣어 만든 시그니처 쿠키",
+      "flavorTags": [
+        "마카다미아",
+        "버터풍미",
+        "달콤함"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-048",
+          "displayName": "메가쿠키（마카다미아）",
+          "temperature": null,
+          "price": 2500,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,대두,밀,이산화황",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%A9%94%EA%B0%80%EC%BF%A0%ED%82%A4-%EB%A7%88%EC%B9%B4%EB%8B%A4%EB%AF%B8%EC%95%84_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-032",
+      "type": "디저트",
+      "category": "구움과자",
+      "name": "메가쿠키（초코칩）",
+      "aliases": [
+        "메가쿠키(초코칩)"
+      ],
+      "temperatures": [],
+      "description": "진한 초콜릿칩을 넣어 만든 시그니처 쿠키",
+      "flavorTags": [
+        "초코칩",
+        "버터풍미",
+        "달콤함"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-049",
+          "displayName": "메가쿠키（초코칩）",
+          "temperature": null,
+          "price": 2500,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,대두,밀",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%A9%94%EA%B0%80%EC%BF%A0%ED%82%A4-%EC%B4%88%EC%BD%94%EC%B9%A9_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-033",
+      "type": "디저트",
+      "category": "빵류",
+      "name": "버터버터소금빵",
+      "aliases": [
+        "버터버터소금빵"
+      ],
+      "temperatures": [],
+      "description": "고소한 프랑스산 프레지덩 버터를 듬뿍넣어 더 부드럽고 짭쪼롬하게 즐길 수 있는 베이커리 메뉴",
+      "flavorTags": [
+        "버터풍미",
+        "짭짤함",
+        "고소함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-050",
+          "displayName": "버터버터소금빵",
+          "temperature": null,
+          "price": 4200,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2023-04-21%2F%EC%A0%9C%ED%9C%B4FR_20230420_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%B2%84%ED%84%B0%EB%B2%84%ED%84%B0%EC%86%8C%EA%B8%88%EB%B9%B5_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-034",
+      "type": "디저트",
+      "category": "빵류",
+      "name": "플레인크로플",
+      "aliases": [
+        "플레인크로플"
+      ],
+      "temperatures": [],
+      "description": "버터풍미가 가득한 크로와상의 바삭함과 와플의 부드러움이 합쳐진 겉바속촉의 표본",
+      "flavorTags": [
+        "버터풍미",
+        "담백함",
+        "고소함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-051",
+          "displayName": "플레인크로플",
+          "temperature": null,
+          "price": 3500,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,밀,대두",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%ED%94%8C%EB%A0%88%EC%9D%B8%ED%81%AC%EB%A1%9C%ED%94%8C_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-035",
+      "type": "디저트",
+      "category": "샌드위치·브런치",
+      "name": "햄앤치즈샌드위치",
+      "aliases": [
+        "햄앤치즈샌드위치"
+      ],
+      "temperatures": [],
+      "description": "햄과 치즈의 조화로운 한끼를 만끽할 수 있는 샌드위치",
+      "flavorTags": [
+        "햄",
+        "치즈",
+        "짭짤함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-052",
+          "displayName": "햄앤치즈샌드위치",
+          "temperature": null,
+          "price": 2900,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "대두,밀,우유,달걀,돼지고기,소고기,조개류(굴)",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2025-01-08%2F%EC%A0%9C%ED%9C%B4FR_20250107_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_NEW%ED%96%84%EC%95%A4%EC%B9%98%EC%A6%88%EC%83%8C%EB%93%9C_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-036",
+      "type": "디저트",
+      "category": "샌드위치·브런치",
+      "name": "크로크무슈",
+      "aliases": [
+        "크로크무슈"
+      ],
+      "temperatures": [],
+      "description": "부드러운 빵에 계란과 치즈를 넣어구운 고소한 프랑스식 샌드위치",
+      "flavorTags": [
+        "치즈",
+        "햄",
+        "고소함"
+      ],
+      "sweetness": "낮음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-053",
+          "displayName": "크로크무슈",
+          "temperature": null,
+          "price": 4800,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,대두,밀,돼지고기",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2023-02-27%2F%EC%A0%9C%ED%9C%B4FR_20230224_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%ED%81%AC%EB%A1%9C%ED%81%AC%EB%AC%B4%EC%8A%88_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-037",
+      "type": "디저트",
+      "category": "마카롱",
+      "name": "유니콘프라페마카롱",
+      "aliases": [
+        "유니콘프라페마카롱"
+      ],
+      "temperatures": [],
+      "description": "인기 음료인 유니콘 프라페를 모티브로 만든 매지컬 비주얼 마카롱",
+      "flavorTags": [
+        "달콤함",
+        "크림",
+        "마카롱"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-054",
+          "displayName": "유니콘프라페마카롱",
+          "temperature": null,
+          "price": 2600,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,대두,밀",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-03-22%2F%EC%A0%9C%ED%9C%B4FR_20210316_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EC%9C%A0%EB%8B%88%EC%BD%98%ED%94%84%EB%9D%BC%ED%8E%98%EB%A7%88%EC%B9%B4%EB%A1%B1_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-038",
+      "type": "디저트",
+      "category": "마카롱",
+      "name": "메가초코마카롱",
+      "aliases": [
+        "메가초코마카롱"
+      ],
+      "temperatures": [],
+      "description": "시그니처 음료 메가초코를 모티브로 만든 초코맛 마카롱",
+      "flavorTags": [
+        "초콜릿",
+        "달콤함",
+        "마카롱"
+      ],
+      "sweetness": "높음",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-055",
+          "displayName": "메가초코마카롱",
+          "temperature": null,
+          "price": 2600,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": null,
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-10-06%2F%EC%A0%9C%ED%9C%B4FR_20211005_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%A9%94%EA%B0%80%EC%B4%88%EC%BD%94%EB%A7%88%EC%B9%B4%EB%A1%B1_v2_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    },
+    {
+      "id": "MENU-039",
+      "type": "디저트",
+      "category": "마카롱",
+      "name": "딸기요거트마카롱",
+      "aliases": [
+        "딸기요거트마카롱"
+      ],
+      "temperatures": [],
+      "description": "딸기요거트 스무디를 연상하게 하는 상큼한 마카롱",
+      "flavorTags": [
+        "딸기",
+        "요거트",
+        "새콤달콤",
+        "과일"
+      ],
+      "sweetness": "보통",
+      "coffeeStrength": "해당 없음",
+      "variants": [
+        {
+          "id": "MEGA-056",
+          "displayName": "딸기요거트마카롱",
+          "temperature": null,
+          "price": 2600,
+          "volumeMl": null,
+          "caffeineMg": null,
+          "allergens": "계란,우유,밀",
+          "decafAvailable": "해당 없음",
+          "imageUrl": "https://images.yogiyo.co.kr/image/yogiyo/PARTNER_FR_IMG%2F%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC%2F2021-10-06%2F%EC%A0%9C%ED%9C%B4FR_20211005_%EB%A9%94%EA%B0%80%EC%BB%A4%ED%94%BC_%EB%94%B8%EA%B8%B0%EC%9A%94%EA%B1%B0%ED%8A%B8%EB%A7%88%EC%B9%B4%EB%A1%B1_v2_1080x640.jpg?width=1080&height=640&quality=70"
+        }
+      ]
+    }
+  ],
+  "options": [
+    {
+      "id": "OPT-001",
+      "group": "커피 조절",
+      "name": "샷 추가",
+      "appliesTo": "커피|콜드브루",
+      "excludedMenus": "없음",
+      "maxQuantity": 2,
+      "priceDelta": 500,
+      "rule": "0~2샷 선택",
+      "menuIds": [
+        "MENU-001",
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-006",
+        "MENU-007"
+      ]
+    },
+    {
+      "id": "OPT-002",
+      "group": "커피 조절",
+      "name": "연하게",
+      "appliesTo": "커피",
+      "excludedMenus": "콜드브루오리지널",
+      "maxQuantity": 1,
+      "priceDelta": 0,
+      "rule": "샷 1개 줄임",
+      "menuIds": [
+        "MENU-001",
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-006"
+      ]
+    },
+    {
+      "id": "OPT-003",
+      "group": "시럽",
+      "name": "바닐라 시럽",
+      "appliesTo": "커피|논커피 라떼",
+      "excludedMenus": "없음",
+      "maxQuantity": 2,
+      "priceDelta": 500,
+      "rule": "0~2회 추가",
+      "menuIds": [
+        "MENU-001",
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-006",
+        "MENU-008",
+        "MENU-009",
+        "MENU-010",
+        "MENU-011",
+        "MENU-012",
+        "MENU-013"
+      ]
+    },
+    {
+      "id": "OPT-004",
+      "group": "시럽",
+      "name": "카라멜 시럽",
+      "appliesTo": "커피|논커피 라떼",
+      "excludedMenus": "없음",
+      "maxQuantity": 2,
+      "priceDelta": 500,
+      "rule": "0~2회 추가",
+      "menuIds": [
+        "MENU-001",
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-006",
+        "MENU-008",
+        "MENU-009",
+        "MENU-010",
+        "MENU-011",
+        "MENU-012",
+        "MENU-013"
+      ]
+    },
+    {
+      "id": "OPT-005",
+      "group": "우유 변경",
+      "name": "두유 변경",
+      "appliesTo": "우유가 들어가는 음료",
+      "excludedMenus": "에이드|주스|티|아메리카노|콜드브루",
+      "maxQuantity": 1,
+      "priceDelta": 500,
+      "rule": "기본 우유를 두유로 변경",
+      "menuIds": [
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-008",
+        "MENU-009",
+        "MENU-010",
+        "MENU-011",
+        "MENU-012",
+        "MENU-013",
+        "MENU-024"
+      ]
+    },
+    {
+      "id": "OPT-006",
+      "group": "우유 변경",
+      "name": "저지방 우유 변경",
+      "appliesTo": "우유가 들어가는 음료",
+      "excludedMenus": "에이드|주스|티|아메리카노|콜드브루",
+      "maxQuantity": 1,
+      "priceDelta": 500,
+      "rule": "기본 우유를 저지방 우유로 변경",
+      "menuIds": [
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-008",
+        "MENU-009",
+        "MENU-010",
+        "MENU-011",
+        "MENU-012",
+        "MENU-013",
+        "MENU-024"
+      ]
+    },
+    {
+      "id": "OPT-007",
+      "group": "토핑",
+      "name": "휘핑 추가",
+      "appliesTo": "초코라떼|쿠키프라페|민트프라페",
+      "excludedMenus": "없음",
+      "maxQuantity": 1,
+      "priceDelta": 500,
+      "rule": "휘핑이 없는 메뉴에는 추가",
+      "menuIds": [
+        "MENU-008",
+        "MENU-026",
+        "MENU-027"
+      ]
+    },
+    {
+      "id": "OPT-008",
+      "group": "토핑",
+      "name": "휘핑 제외",
+      "appliesTo": "카페모카",
+      "excludedMenus": "없음",
+      "maxQuantity": 1,
+      "priceDelta": 0,
+      "rule": "기본 휘핑 제거",
+      "menuIds": [
+        "MENU-006"
+      ]
+    },
+    {
+      "id": "OPT-009",
+      "group": "원두 변경",
+      "name": "디카페인 변경",
+      "appliesTo": "decaf_available=Y인 커피",
+      "excludedMenus": "콜드브루오리지널",
+      "maxQuantity": 1,
+      "priceDelta": 500,
+      "rule": "기본 원두를 디카페인 원두로 변경",
+      "menuIds": [
+        "MENU-001",
+        "MENU-002",
+        "MENU-003",
+        "MENU-004",
+        "MENU-005",
+        "MENU-006"
+      ]
+    }
+  ],
+  "pairings": [
+    {
+      "id": "PAIR-001",
+      "beverageMenuIds": [
+        "MENU-001",
+        "MENU-007"
+      ],
+      "dessertMenuIds": [
+        "MENU-028",
+        "MENU-029",
+        "MENU-032"
+      ],
+      "reason": "쓴맛과 깔끔함이 달콤하고 진한 디저트의 맛을 정리해 줌"
+    },
+    {
+      "id": "PAIR-002",
+      "beverageMenuIds": [
+        "MENU-002",
+        "MENU-003"
+      ],
+      "dessertMenuIds": [
+        "MENU-033",
+        "MENU-034"
+      ],
+      "reason": "우유의 고소함이 버터 풍미와 잘 이어지고 단맛이 과하지 않음"
+    },
+    {
+      "id": "PAIR-003",
+      "beverageMenuIds": [
+        "MENU-004",
+        "MENU-005",
+        "MENU-006"
+      ],
+      "dessertMenuIds": [
+        "MENU-035",
+        "MENU-036"
+      ],
+      "reason": "달콤한 음료와 짭짤한 식사 메뉴가 대비되어 균형을 이룸"
+    },
+    {
+      "id": "PAIR-004",
+      "beverageMenuIds": [
+        "MENU-014",
+        "MENU-015",
+        "MENU-016"
+      ],
+      "dessertMenuIds": [
+        "MENU-037",
+        "MENU-038",
+        "MENU-039",
+        "MENU-031"
+      ],
+      "reason": "향이 가벼운 차가 한입 디저트의 단맛을 부담 없이 받쳐 줌"
+    },
+    {
+      "id": "PAIR-005",
+      "beverageMenuIds": [
+        "MENU-017",
+        "MENU-018",
+        "MENU-019",
+        "MENU-020"
+      ],
+      "dessertMenuIds": [
+        "MENU-028",
+        "MENU-034"
+      ],
+      "reason": "시트러스 계열의 산뜻함이 치즈와 버터의 묵직함을 줄여 줌"
+    },
+    {
+      "id": "PAIR-006",
+      "beverageMenuIds": [
+        "MENU-011",
+        "MENU-024"
+      ],
+      "dessertMenuIds": [
+        "MENU-039",
+        "MENU-028"
+      ],
+      "reason": "딸기와 요거트의 새콤달콤한 계열을 맞추거나 치즈 풍미로 부드럽게 연결함"
+    },
+    {
+      "id": "PAIR-007",
+      "beverageMenuIds": [
+        "MENU-010",
+        "MENU-013"
+      ],
+      "dessertMenuIds": [
+        "MENU-031",
+        "MENU-033"
+      ],
+      "reason": "고소하고 묵직한 풍미가 자연스럽게 이어짐"
+    },
+    {
+      "id": "PAIR-008",
+      "beverageMenuIds": [
+        "MENU-025",
+        "MENU-021"
+      ],
+      "dessertMenuIds": [
+        "MENU-038",
+        "MENU-037"
+      ],
+      "reason": "과일 음료의 상큼함과 달콤한 한입 디저트가 대비됨"
+    }
+  ],
+  "unavailable": [
+    {
+      "requested": "오렌지주스",
+      "alternativeMenuIds": [
+        "MENU-022",
+        "MENU-020",
+        "MENU-019"
+      ],
+      "reason": "과일 계열의 시원한 음료"
+    },
+    {
+      "requested": "플랫화이트",
+      "alternativeMenuIds": [
+        "MENU-002",
+        "MENU-003"
+      ],
+      "reason": "에스프레소와 우유가 들어간 부드러운 커피"
+    },
+    {
+      "requested": "아인슈페너",
+      "alternativeMenuIds": [
+        "MENU-006",
+        "MENU-007"
+      ],
+      "reason": "진한 커피 또는 크림감 있는 커피"
+    },
+    {
+      "requested": "마들렌",
+      "alternativeMenuIds": [
+        "MENU-034",
+        "MENU-031"
+      ],
+      "reason": "버터 풍미가 있는 구움 디저트"
+    },
+    {
+      "requested": "휘낭시에",
+      "alternativeMenuIds": [
+        "MENU-034",
+        "MENU-031"
+      ],
+      "reason": "고소한 구움 디저트"
+    },
+    {
+      "requested": "브라우니",
+      "alternativeMenuIds": [
+        "MENU-030",
+        "MENU-032"
+      ],
+      "reason": "진한 초콜릿 디저트"
+    },
+    {
+      "requested": "베이글",
+      "alternativeMenuIds": [
+        "MENU-033",
+        "MENU-035"
+      ],
+      "reason": "식사로 먹기 좋은 빵"
+    },
+    {
+      "requested": "파니니",
+      "alternativeMenuIds": [
+        "MENU-036",
+        "MENU-035"
+      ],
+      "reason": "햄과 치즈가 들어간 식사 메뉴"
+    }
+  ]
+}
