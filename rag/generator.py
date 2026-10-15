@@ -77,6 +77,11 @@ def normalize_query_plan(
 ) -> QueryPlan:
     """LLM 계획의 명백한 오해석만 기존 QueryPlan 필드 안에서 보정한다."""
     normalized_question = normalize_text(question)
+    if plan.intent == "recommend" and re.search(
+        r"우유(?:를|가|는)?(?:못먹|못마|안먹|안마|없는|없이|빼|제외|알레르기|알러지)", normalized_question
+    ):
+        plan.excluded_allergens = list(dict.fromkeys([*plan.excluded_allergens, "우유"]))
+        plan.preferred_terms = [term for term in plan.preferred_terms if "우유" not in term]
     positive_sweetness = _contains_any(
         normalized_question, HIGH_SWEETNESS_PATTERNS
     )

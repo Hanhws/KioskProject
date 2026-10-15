@@ -515,7 +515,19 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 menu_ids.append(suggestion)
                 next_action = "confirm_menu"
         elif step.kind == "temperature_conflict":
-            answers.append("따뜻한 것과 아이스 중 어떤 것으로 드릴까요?")
+            # 기존 주문 엔진의 온도 보류 초안을 사용해 다음 답변에 메뉴·수량을 잇는다.
+            menu_id = _menu_id(step.menu_term)
+            menu = next((row for row in CATALOG["menus"] if row["id"] == menu_id), None)
+            if not request.context.pending and menu and set(menu["temperatures"]) == {"HOT", "ICE"}:
+                draft = step.model_copy(update={"kind": "add", "temperature": None})
+                action, problem, _ = _action(draft, request.context.cart, None, last_menu, recommended)
+                if action:
+                    actions.append(action)
+                    last_menu = menu_id
+                elif problem:
+                    answers.append(problem)
+            else:
+                answers.append("따뜻한 것과 아이스 중 어떤 것으로 드릴까요?")
             status = "partial" if actions else "needs_clarification"
         elif step.kind == "set_order_mode":
             if step.order_mode:

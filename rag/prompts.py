@@ -30,6 +30,7 @@ class QueryPlan(BaseModel):
     required_situations: list[str] = Field(default_factory=list)
     preferred_terms: list[str] = Field(default_factory=list)
     excluded_menu_ids: list[str] = Field(default_factory=list)
+    excluded_allergens: list[str] = Field(default_factory=list)
     option_terms: list[str] = Field(default_factory=list)
     option_quantity: Optional[int] = None
     menu_quantity: Optional[int] = None
@@ -87,6 +88,7 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
 - 메뉴·온도·수량·매장/포장처럼 주문 내용을 말하면 intent='order'로 분류합니다.
 - '카페인 적게', '덜 달게'처럼 숫자 기준이 없는 표현에 임의 수치를 만들지 말고 ambiguous_conditions에 둡니다.
 - 사용자가 명시한 숫자 상한만 max_price_krw 또는 max_caffeine_mg에 둡니다.
+- '우유 못 먹어요', '우유 없는 음료'처럼 성분을 제외하는 추천은 excluded_allergens=['우유']로 둡니다. 단순한 우유 성분 정보 질문과 구분합니다.
 - 한 주문을 동시에 HOT과 ICE로 지정한 경우만 충돌입니다. HOT·ICE 가격이나 정보를 모두 묻는 질문은 충돌로 기록하지 않습니다.
 - 이전 조건은 새 질문이 바꾼 항목만 덮어쓰고 나머지는 유지합니다. 단,
   requested_fields는 누적 조건이 아니므로 이전 조건에서 자동으로 복사하지 않습니다.
@@ -137,8 +139,9 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
   주문 요약만 답하고 이전 메뉴 설명을 반복하지 않습니다.
 - menu_info에서는 requested_fields에 있는 항목만 답합니다. 단, '설명'을 요청한 경우에는
   메뉴의 핵심 맛과 특징을 간단히 설명할 수 있지만 영양·용량·카페인은 묻지 않으면 제외합니다.
-- 조건에 맞는 메뉴를 처음 추천하고 requested_fields가 비어 있으면 후보 메뉴명만
-  3~4개 안내하고, 맛·가격·온도·용량·영양 설명은 붙이지 않습니다.
+- 조건에 맞는 메뉴를 처음 추천하고 requested_fields가 비어 있으면 후보 메뉴
+  3~4개와 메뉴별 짧은 추천 이유를 안내합니다. 이유는 확인된 맛·당도·상황 정보만 사용하고,
+  묻지 않은 가격·온도·용량·영양 설명은 붙이지 않습니다.
   마지막에는 어떤 메뉴가 궁금한지만 짧게 묻습니다.
 - 추천 질문에 가격·맛·카페인처럼 requested_fields가 있거나 사용자가 특정 메뉴의
   상세 설명을 요청한 경우에만 그 요청 항목을 안내합니다.
@@ -165,6 +168,8 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
 
 - 가격·용량·영양·카페인은 상세 데이터의 값만 사용하고 온도별 차이를 구분합니다.
 - 빈 값은 추측하지 않습니다. 빈 알레르기는 알레르기 없음이 아닙니다.
+- excluded_allergens에 명시된 성분이 기록된 메뉴는 제외합니다. 빈칸인 메뉴는 추천 가능하지만 해당 성분이 없다고 단정하지 말고 포함 여부 확인을 안내합니다. 두유 변경으로 우유 알레르기에 안전하다고 보장하지 않습니다.
+- 우유 제외 추천의 안내 문구는 '우유가 포함된 것으로 표시된 메뉴를 제외하고 추천했어요.'로 사용합니다. 우유가 전혀 없다고 보장하지 않습니다.
 - 디카페인 가능은 카페인 0mg이 아니며, 옵션 변경 뒤 수치를 추정하지 않습니다.
 - 비교 대상은 같은 기준으로 모두 다루고 근거 없는 우열을 만들지 않습니다.
 - 추천은 적용한 필수 조건을 짧게 요약하고 필수 조건 필터를 통과한 후보만 사용합니다.

@@ -3,6 +3,7 @@ import type { ChatResponse } from "../lib/api";
 import { buildChatRequest, confirmSuggestedMenu, initialKioskState, kioskReducer, mapRagChoices } from "../lib/kiosk/store";
 import { initialOrderState } from "../lib/order/engine";
 import { priceCart } from "../lib/order/pricing";
+import { interpretStageReply } from "../lib/order/stageReply";
 
 function response(partial: Partial<ChatResponse>): ChatResponse {
   return {
@@ -18,6 +19,26 @@ function response(partial: Partial<ChatResponse>): ChatResponse {
 }
 
 describe("서버 응답 처리 (store)", () => {
+  it("8.2 충돌 주문은 수량·옵션을 보류하고 온도 답 뒤 대기 케이크와 한 번씩 담긴다", () => {
+    let state = kioskReducer(initialKioskState(), { type: "server", response: response({
+      status: "partial", cart_actions: [
+        { type: "add_item", menu_id: "MENU-001", quantity: 2, options: { "OPT-001": 1 } },
+        { type: "add_item", menu_id: "MENU-028" },
+      ],
+    }) });
+    expect(state.order.lines).toHaveLength(0);
+    expect(state.order.pending?.kind).toBe("temperature");
+    expect(state.order.queued).toHaveLength(1);
+    const actions = interpretStageReply(state.order, "아이스요");
+    expect(actions).not.toBeNull();
+    state = kioskReducer(state, { type: "engine", actions: actions! });
+    expect(state.order.lines.map((line) => [line.menuId, line.quantity])).toEqual([["MENU-001", 2], ["MENU-028", 1]]);
+    expect(state.order.lines[0].temperature).toBe("ICE");
+    expect(state.order.lines[0].options).toEqual({ "OPT-001": 1 });
+    expect(priceCart(state.order.lines).total).toBe(10200);
+    expect(state.order.pending).toBeNull();
+    expect(state.order.queued).toHaveLength(0);
+  });
   it.each(["engine", "server"] as const)("%s 경로의 새 주문은 이전 추천·조건·대화까지 초기화한다", (path) => {
     const old = {
       ...initialKioskState(),

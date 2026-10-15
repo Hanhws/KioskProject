@@ -193,7 +193,10 @@ class MockPlanner:
                 steps.append(TurnStep(kind="set_order_mode", text=part, order_mode=mode))
                 continue
             if len(mentions) <= 1 and re.search(r"따뜻|뜨거|핫|HOT|뜨아", part, re.I) and re.search(r"아이스|차가|시원|ICE|아아", part, re.I) and (re.search(r"주세요|주문|담아", part) or context.get("cart", {}).get("pending_question")):
-                steps.append(TurnStep(kind="temperature_conflict", text=part))
+                steps.append(TurnStep(kind="temperature_conflict", text=part,
+                                      menu_term=mentions[0][2] if mentions else None,
+                                      quantity=_quantity(part), option_terms=_option_terms(part),
+                                      option_quantity=_option_quantity(part)))
                 continue
             if re.search(r"(?:다\s*취소|전부\s*취소|처음부터\s*다시|전체\s*취소)", part):
                 steps.append(TurnStep(kind="clear_cart", text=part))
@@ -321,7 +324,10 @@ class LLMDialoguePlanner:
         )
         clear_edit = len(rule_plan.steps) == 1 and rule_plan.steps[0].kind in {"update_option", "update_temperature"}
         category_order = any(step.kind == "add" and _category_term(step.menu_term or "") for step in rule_plan.steps) and all(step.kind == "add" for step in rule_plan.steps)
-        if explicit_order or pending_add or quantity_change or clear_edit or category_order or is_payment_request(message) or control_step(message, context):
+        conflict_order = bool(rule_plan.steps) and any(step.kind == "temperature_conflict" for step in rule_plan.steps) and all(
+            known_add(step) or step.kind == "temperature_conflict" for step in rule_plan.steps
+        )
+        if explicit_order or pending_add or quantity_change or clear_edit or category_order or conflict_order or is_payment_request(message) or control_step(message, context):
             return rule_plan
 
         menu_names = [m["name"] for m in MENUS]
@@ -339,7 +345,7 @@ class LLMDialoguePlanner:
             "메뉴 삭제는 remove, 장바구니 확인은 show_cart, 전체 취소는 clear_cart, 주문 마무리는 finish_ordering, "
             "최종 확인은 confirm_order, 매장·포장은 set_dine_option으로 두세요. "
             "결제 수단 선택은 select_payment(payment_method=card/easy_pay/cash), 새 주문 시작은 new_order로 두세요. "
-            "한 주문의 HOT/ICE가 충돌하면 temperature_conflict로 두세요. "
+            "한 주문의 HOT/ICE가 충돌하면 temperature_conflict로 두고 메뉴명·수량·옵션은 보존하세요. "
             "빠른 주문/대화 주문 방식 전환은 set_order_mode(order_mode 포함)로 두세요. "
             "같은 메뉴 두 잔 중 한 잔만 옵션이 다르면 두 개의 add로 나누세요. "
             "옵션 수량은 option_quantity에 두고 메뉴 수량과 구분하세요. "

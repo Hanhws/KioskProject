@@ -30,14 +30,19 @@ from .retriever import retrieve_evidence, search_only, semantic_menu_candidate_i
 
 
 def brief_recommendation_answer(menu_ids: list[str], data: RagData) -> str:
-    names = [
-        data.catalog_by_id[menu_id]["menu_name"]
-        for menu_id in menu_ids[:4]
-        if menu_id in data.catalog_by_id
-    ]
-    if not names:
+    suggestions = []
+    for menu_id in menu_ids[:4]:
+        menu = data.catalog_by_id.get(menu_id)
+        if not menu:
+            continue
+        reasons = pipe_values(menu.get("flavor_tags"))[:2]
+        if not reasons and menu.get("sweetness_level"):
+            reasons = [f"당도 {menu['sweetness_level']}"]
+        reason = f" ({', '.join(reasons)})" if reasons else ""
+        suggestions.append(f"{menu['menu_name']}{reason}")
+    if not suggestions:
         return "조건에 맞는 메뉴를 찾지 못했어요. 다른 조건으로 말씀해 주세요."
-    return f"{', '.join(names)}가 있어요. 어떤 메뉴가 궁금하세요?"
+    return f"{', '.join(suggestions)}를 추천해요. 어떤 메뉴가 궁금하세요?"
 
 
 def recommendation_choices(menu_ids: list[str], data: RagData) -> list[dict[str, Any]]:
@@ -181,6 +186,15 @@ class CafeRAGService:
         except Exception as error:
             return self._error_result("planner_error", error)
 
+        if query_plan.intent == "ambiguous" and (prior_conditions or {}).get("clarification_count", 0) >= 2:
+            query_plan.intent = "recommend"
+        if query_plan.intent == "recommend" and prior_conditions:
+            query_plan.clarification_count = max(
+                query_plan.clarification_count, int(prior_conditions.get("clarification_count", 0))
+            )
+            query_plan.excluded_allergens = list(dict.fromkeys([
+                *prior_conditions.get("excluded_allergens", []), *query_plan.excluded_allergens,
+            ]))
         query_plan = normalize_query_plan(query_plan, self.data, question)
 
         unavailable_rule = find_unavailable_rule(question, self.data)
@@ -342,10 +356,12 @@ class CafeRAGService:
         allowed_menu_ids = set(self.data.catalog_by_id)
         if query_plan.intent == "recommend":
             allowed_menu_ids = set(recommendation_ids)
+            deterministic_menu_ids.intersection_update(allowed_menu_ids)
         elif query_plan.intent == "unavailable":
             allowed_menu_ids = registered_alternative_ids | set(unavailable_fallback_ids)
-        allowed_menu_ids.update(resolved["exact_menu_ids"])
-        allowed_menu_ids.update(temperature_alternative_menu_ids)
+        if query_plan.intent != "recommend":
+            allowed_menu_ids.update(resolved["exact_menu_ids"])
+            allowed_menu_ids.update(temperature_alternative_menu_ids)
         rejected_menu_ids = sorted(set(draft.related_menu_ids) - allowed_menu_ids)
         validated_draft_menu_ids = (
             set(draft.related_menu_ids)
@@ -371,8 +387,10 @@ class CafeRAGService:
             grounding_issues.append(
                 f"필수 조건 또는 대안 후보 밖의 메뉴 ID: {rejected_menu_ids}"
             )
-        is_brief_recommendation = (
-            query_plan.intent == "recommend" and not query_plan.requested_fields
+        stop_clarifying = query_plan.intent == "recommend" and query_plan.clarification_count >= 2
+        is_brief_recommendation = query_plan.intent == "recommend" and (
+            stop_clarifying or (query_plan.excluded_allergens and not recommendation_ids)
+            or (not query_plan.requested_fields and draft.status != "needs_clarification")
         )
         if is_brief_recommendation:
             recommended_menu_ids = [
@@ -382,7 +400,7 @@ class CafeRAGService:
             ]
             if not recommended_menu_ids:
                 recommended_menu_ids = recommendation_ids
-            recommended_menu_ids = list(dict.fromkeys(recommended_menu_ids))[:4]
+            recommended_menu_ids = list(dict.fromkeys(recommended_menu_ids))[:3 if stop_clarifying else 4]
             answer = brief_recommendation_answer(recommended_menu_ids, self.data)
             status = "ok" if recommended_menu_ids else "no_candidates"
             valid_menu_ids = recommended_menu_ids
@@ -423,13 +441,25 @@ class CafeRAGService:
                 ]
                 if next_action == "choose_menu":
                     next_action = None
+            uncertain_names = [
+                self.data.catalog_by_id[menu_id]["menu_name"] for menu_id in valid_menu_ids
+                if query_plan.excluded_allergens and any(
+                    not variant.get("allergens") for variant in variants_for_menu_id(self.data, menu_id)
+                )
+            ]
+            if uncertain_names:
+                excluded = ', '.join(query_plan.excluded_allergens)
+                answer += (f"\n{', '.join(uncertain_names)}는 알레르기 정보가 없어 "
+                           f"{excluded} 포함 여부를 직원에게 확인해 주세요.")
+            if status == "ok" and valid_menu_ids and "우유" in query_plan.excluded_allergens:
+                answer = "우유가 포함된 것으로 표시된 메뉴를 제외하고 추천했어요.\n" + answer
         return {
             "answer": answer,
             "related_menu_ids": valid_menu_ids,
             "evidence_document_ids": valid_evidence_ids,
             "retrieved_documents": retrieved_rows,
             "status": status,
-            "follow_up_question": draft.follow_up_question,
+            "follow_up_question": None if stop_clarifying else draft.follow_up_question,
             "choices": valid_choices,
             "applied_conditions": query_plan.model_dump(exclude_none=True),
             "query_plan": query_plan.model_dump(),

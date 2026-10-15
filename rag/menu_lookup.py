@@ -92,6 +92,16 @@ def variants_for_menu_id(data: RagData, menu_id: str) -> list[dict[str, Any]]:
     return data.variants_by_menu_name.get(menu["menu_name"], [])
 
 
+def meets_allergen_constraint(variant: dict[str, Any], plan: QueryPlan) -> bool:
+    if not plan.excluded_allergens:
+        return True
+    # 명시된 성분만 제외한다. 빈 칸의 불확실성은 추천 응답에서 별도로 안내한다.
+    allergens = variant.get("allergens")
+    return not any(
+        normalize_text(term) in normalize_text(allergens) for term in plan.excluded_allergens
+    )
+
+
 def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str]:
     candidates = []
     preferred_terms = [
@@ -138,9 +148,14 @@ def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str
             ):
                 continue
         variants = variants_for_menu_id(data, menu_id)
+        # 한 온도라도 제외 성분이 명시돼 있으면 해당 메뉴 전체를 추천에서 제외한다.
+        if plan.excluded_allergens and any(not meets_allergen_constraint(row, plan) for row in variants):
+            continue
         eligible_variants = []
         for variant in variants:
             if plan.temperature and variant["temperature"] != plan.temperature:
+                continue
+            if not meets_allergen_constraint(variant, plan):
                 continue
             if plan.max_price_krw is not None:
                 price = variant.get("price_krw")
@@ -362,6 +377,7 @@ def exact_fact_bundle(
                 "eligible_variants": [
                     variant for variant in variants_for_menu_id(data, menu_id)
                     if (not plan.temperature or variant["temperature"] == plan.temperature)
+                    and meets_allergen_constraint(variant, plan)
                     and (
                         plan.max_price_krw is None
                         or (variant.get("price_krw") is not None and variant["price_krw"] <= plan.max_price_krw)

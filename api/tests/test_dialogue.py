@@ -315,16 +315,30 @@ class DialogueTests(unittest.TestCase):
         result = self.chat("라떼 빼 주세요", [LATTE_LINE, vanilla])
         self.assertEqual(result["cart_actions"], [{"type": "remove_item", "target": {"menu_ids": ["MENU-002", "MENU-004"]}}])
 
-    def test_temperature_conflict_does_not_create_order_action(self):
-        result = self.chat("따뜻한 아이스 아메리카노 주세요")
-        self.assertEqual(result["status"], "needs_clarification")
-        self.assertNotIn("cart_actions", result)
-        self.assertIn("따뜻한 것과 아이스", result["answer"])
+    def test_temperature_conflict_preserves_draft_until_answer(self):
+        result = self.chat("따뜻한 아이스 아메리카노 2잔 샷 추가해 주세요")
+        self.assertEqual(result["cart_actions"], [{"type": "add_item", "menu_id": "MENU-001",
+                                                  "quantity": 2, "options": {"OPT-001": 1}}])
+        body = request("아이스요")
+        body["context"]["pending"] = {"kind": "temperature", "action": result["cart_actions"][0]}
+        body["context"]["cart"]["pending_question"] = "아메리카노는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
+        resolved = self.client.post("/api/chat", json=body).json()
+        self.assertEqual(resolved["cart_actions"], [{**result["cart_actions"][0], "temperature": "ICE", "pending_resolution": True}])
+
+    def test_repeated_temperature_conflict_keeps_existing_pending(self):
         body = request("따뜻한 아이스")
+        body["context"]["pending"] = {"kind": "temperature", "action": {"type": "add_item", "menu_id": "MENU-002"}}
         body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
         pending = self.client.post("/api/chat", json=body).json()
         self.assertNotIn("cart_actions", pending)
         self.assertEqual(pending["status"], "needs_clarification")
+
+    def test_live_conflict_order_reuses_rules_without_model_call(self):
+        planner = LLMDialoguePlanner.__new__(LLMDialoguePlanner)
+        result = planner.plan("따뜻한 아이스 아메리카노 2잔 주세요", request("")["context"])
+        self.assertEqual(result.steps[0].kind, "temperature_conflict")
+        self.assertIn("아메리카노", result.steps[0].menu_term)
+        self.assertEqual(result.steps[0].quantity, 2)
 
     def test_typo_offers_confirmation_without_adding(self):
         result = self.chat("바닐라라테 주세요")
