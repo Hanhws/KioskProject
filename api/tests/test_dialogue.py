@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from api.dialogue import DialoguePlan, TurnStep
+from api.dialogue import DialoguePlan, LLMDialoguePlanner, TurnStep
 from api.index import create_app
 
 
@@ -103,6 +103,16 @@ class QualifiedConfirmationPlanner:
         ])
 
 
+def live_planner_without_model():
+    class ForbiddenModel:
+        def invoke(self, prompt):
+            raise AssertionError("명확한 주문은 LLM 호출 없이 해석해야 합니다")
+
+    planner = LLMDialoguePlanner.__new__(LLMDialoguePlanner)
+    planner.model = ForbiddenModel()
+    return planner
+
+
 def pending_latte(message):
     body = request(message)
     body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
@@ -181,6 +191,31 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual([choice["value"] for choice in result["choices"]], result["related_menu_ids"])
         self.assertIn("개발·시험용 가짜 RAG", result["answer"])
         self.assertIsNone(result["next_action"])
+
+    def test_live_adapter_uses_team_alternative_rule_when_rag_has_no_candidates(self):
+        with TestClient(create_app(RecordingRAG(), live_planner_without_model())) as client:
+            result = client.post("/api/chat", json=request("브라우니 주세요")).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["related_menu_ids"], ["MENU-030", "MENU-032"])
+        self.assertEqual([choice["value"] for choice in result["choices"]], result["related_menu_ids"])
+        self.assertEqual(result["evidence_document_ids"], [])
+
+    def test_live_planner_reuses_clear_order_and_pending_rules(self):
+        planner = live_planner_without_model()
+        with TestClient(create_app(RecordingRAG(), planner)) as client:
+            latte = client.post("/api/chat", json=request("라떼 하나요")).json()
+            iced = client.post("/api/chat", json=request("아이스 아메리카노 하나 주세요")).json()
+            mixed = client.post("/api/chat", json=pending_latte("아이스요, 치즈케이크도 주세요")).json()
+            quantity = client.post("/api/chat", json=request("카페라떼 세 잔으로 바꿔 주세요", [LATTE_LINE])).json()
+        self.assertEqual(latte["cart_actions"], [{"type": "add_item", "menu_id": "MENU-002"}])
+        self.assertEqual(iced["cart_actions"], [{"type": "add_item", "menu_id": "MENU-001", "temperature": "ICE"}])
+        self.assertEqual(mixed["cart_actions"], [
+            {"type": "add_item", "menu_id": "MENU-002", "temperature": "ICE", "pending_resolution": True},
+            {"type": "add_item", "menu_id": "MENU-028"},
+        ])
+        self.assertEqual(quantity["cart_actions"], [
+            {"type": "update_item", "target": {"menu_id": "MENU-002"}, "quantity": 3},
+        ])
 
     def test_ruleless_unavailable_menu_uses_rag_candidates_but_only_sold_three(self):
         rag = FallbackAlternativeRAG(["NOT-SOLD", "MENU-030", "MENU-032", "MENU-031", "MENU-028", "MENU-030"])

@@ -1,6 +1,6 @@
-"""Turn planning. The offline planner is only for local integration tests.
+"""Turn planning. Clear order phrases use the existing rule planner in live mode.
 
-Live mode uses one structured LLM call to separate information and order work.
+Other live requests use one structured LLM call to separate information and order work.
 Neither planner is allowed to supply menu IDs, option IDs, or prices.
 """
 
@@ -115,7 +115,7 @@ def _ordinal(text: str | None) -> int | None:
 
 
 class MockPlanner:
-    """Catalog based local smoke planner; live natural language uses LLMDialoguePlanner."""
+    """Catalog based rule planner for local tests and clear live order phrases."""
 
     def plan(self, message: str, context: dict) -> DialoguePlan:
         if context.get("cart", {}).get("stage") == "final_confirm":
@@ -245,6 +245,33 @@ class LLMDialoguePlanner:
         self.model = ChatOpenAI(model=model, temperature=0).with_structured_output(DialoguePlan, method="json_schema")
 
     def plan(self, message: str, context: dict) -> DialoguePlan:
+        # The existing rule planner is more reliable for explicit HTI order forms.
+        # Keep mixed questions and open-ended language with the LLM.
+        rule_plan = MockPlanner().plan(message, context)
+        known_terms = {
+            "".join(term.lower().split())
+            for menu in MENUS for term in [menu["name"], *menu["aliases"]]
+        } | {"".join(row["requested"].lower().split()) for row in CATALOG["unavailable"]}
+        def known_add(step: TurnStep) -> bool:
+            return step.kind == "add" and bool(step.menu_term) and "".join(step.menu_term.lower().split()) in known_terms
+
+        explicit_order = (
+            "?" not in message and bool(re.search(r"(?:주세요|하나요|추가요)\s*[.!]?\s*$", message))
+            and all(known_add(step) for step in rule_plan.steps)
+        )
+        pending_add = (
+            (context.get("pending") or {}).get("kind") == "temperature"
+            and len(rule_plan.steps) > 1 and rule_plan.steps[0].kind == "answer_pending"
+            and all(known_add(step) for step in rule_plan.steps[1:])
+        )
+        quantity_change = (
+            len(rule_plan.steps) == 1 and rule_plan.steps[0].kind == "update_quantity"
+            and rule_plan.steps[0].quantity is not None
+            and bool(re.search(r"(?:잔|개)\s*(?:으로|로)\s*(?:바꿔|변경)", message))
+        )
+        if explicit_order or pending_add or quantity_change:
+            return rule_plan
+
         menu_names = [m["name"] for m in MENUS]
         prompt = (
             "카페 키오스크 요청을 순서 있는 단계로 나누세요. 정보 질문은 주문보다 먼저 두세요. "

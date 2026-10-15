@@ -3,7 +3,7 @@
 카페 자연어 키오스크의 **주문 기능·프론트엔드·UI** 담당 부분입니다.
 채팅 화면, 추천 메뉴 카드, 메뉴판(빠른 주문), 주문 내역·총액, 장바구니 추가·수정·삭제, 옵션 검증, 금액 계산, 매장/포장 → 최종 확인 → 결제 → 주문번호까지의 주문 흐름을 구현했습니다. Next.js(App Router) + TypeScript입니다.
 
-이 브랜치의 `api/index.py`는 `POST /api/chat`을 제공합니다. 기본 모드는 `api/fake_rag.py`와 카탈로그 기반 시험용 요청 해석기로 동작하며 실제 검색·임베딩·모델 호출을 하지 않습니다. `KIOSK_MODE=live`에서는 구조화 LLM 요청 해석기와 `rag` 브랜치에서 가져온 `CafeRAGService.ask()`를 사용합니다. 실제 모드는 API 키가 필요하며 아직 외부 API 호출로 검증하지 않았습니다.
+이 브랜치의 `api/index.py`는 `POST /api/chat`을 제공합니다. 기본 모드는 `api/fake_rag.py`와 카탈로그 기반 시험용 요청 해석기로 동작하며 실제 검색·임베딩·모델 호출을 하지 않습니다. `KIOSK_MODE=live`에서는 명확한 HTI 주문 표현을 기존 규칙으로 처리하고, 나머지 요청은 구조화 LLM 요청 해석기와 `CafeRAGService.ask()`를 사용합니다. 실제 모드는 API 키가 필요합니다. 현재 검증 범위와 남은 화면 확인은 [최종 흐름 검증 기록](docs/FINAL_VERIFICATION.md)에 있습니다.
 
 ## 구조
 
@@ -59,6 +59,7 @@ npm install
 npm run dev        # localhost:3000, 시작 전에 CSV로 catalog.json을 다시 만듦
 npm test           # 주문·상태 테스트
 npm run typecheck
+npm run build
 ```
 
 API 서버를 실행할 Python 환경을 한 번 준비합니다 (Python 3.10 이상).
@@ -83,7 +84,7 @@ API 서버가 없어도 메뉴판·장바구니·주문 흐름은 동작하고, 
 
 ```bash
 python3 -m pip install -r requirements-rag.txt
-KIOSK_MODE=live npm run api
+KIOSK_MODE=live RAG_REBUILD_INDEX=0 npm run api
 ```
 
 CSV가 바뀌면 `data/megacoffee_rag_enriched/`를 갱신한 뒤 `npm run catalog`를 실행합니다.
@@ -92,4 +93,4 @@ CSV가 바뀌면 `data/megacoffee_rag_enriched/`를 갱신한 뒤 `npm run catal
 
 - 서버는 장바구니를 직접 바꾸지 않고 응답에 `cart_actions`를 담아 지시합니다. 형식은 `docs/API.md`에 있습니다.
 - 프론트가 옵션 적용 가능 여부·최대 횟수·추가금을 다시 검사하므로, 서버가 틀린 지시를 보내도 장바구니가 잘못되지 않습니다.
-- `api/index.py`의 `route_message()`는 정보 질문을 RAG에 보내고 자연어 주문·수정·확인 요청을 기존 `cart_actions`로 변환합니다. 실제 모드에서는 `api/dialogue.py`의 구조화 LLM 계획을 사용합니다. 추천 순서는 RAG 선택지 또는 답변에서 확인 가능한 경우에만 후속 선택에 쓰며, 보류 중 정보 질문은 원래 질문으로 복귀합니다. 보류 중 독립된 새 주문은 먼저 처리하고 기존 온도를 다시 묻습니다. 실제 LLM·RAG의 후속 대화 품질은 별도 검증이 필요합니다. 프론트는 `history`, `cart`, 구조화된 `pending`, `pending_question`, `last_recommended_menu_ids`, `prior_conditions`를 매 턴 보냅니다.
+- `api/index.py`의 `route_message()`는 정보 질문을 RAG에 보내고 자연어 주문·수정·확인 요청을 기존 `cart_actions`로 변환합니다. 실제 모드의 명확한 주문 표현은 `api/dialogue.py`의 기존 규칙을 재사용하고, 나머지는 구조화 LLM 계획을 사용합니다. 추천 후속 선택은 RAG의 메뉴 ID 순서를 사용하며, 보류 중 정보 질문은 원래 질문으로 복귀합니다. 보류 중 독립된 새 주문은 먼저 처리하고 기존 온도를 다시 묻습니다. 프론트는 `history`, `cart`, 구조화된 `pending`, `pending_question`, `last_recommended_menu_ids`, `prior_conditions`를 매 턴 보냅니다. 실제 RAG의 근거·대안 품질과 브라우저 화면은 [검증 기록](docs/FINAL_VERIFICATION.md)의 남은 확인 사항을 참고하세요.

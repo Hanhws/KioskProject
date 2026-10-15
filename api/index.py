@@ -376,15 +376,21 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                         prior_conditions=request.context.prior_conditions,
                         recent_history=[row.model_dump() for row in request.history[-6:]],
                     )
-                    alternative_ids = list(dict.fromkeys(
+                    rag_alternative_ids = list(dict.fromkeys(
                         menu_id for menu_id in (result.get("related_menu_ids") or [])
+                        if menu_id in valid_ids
+                    ))[:3]
+                    rule = next((row for row in CATALOG["unavailable"]
+                                 if "".join(row["requested"].lower().split()) == "".join(step.menu_term.lower().split())), None)
+                    alternative_ids = rag_alternative_ids or list(dict.fromkeys(
+                        menu_id for menu_id in (rule or {}).get("alternativeMenuIds", [])
                         if menu_id in valid_ids
                     ))[:3]
                     prefix = f"'{step.menu_term}'은(는) 판매 메뉴에 없어 담지 않았어요."
                     if alternative_ids:
                         names = ", ".join(menu_names[menu_id] for menu_id in alternative_ids)
                         answers.append(f"{prefix} 대신 {names} 중에서 골라 주세요.")
-                        if result.get("answer"):
+                        if rag_alternative_ids and result.get("answer"):
                             answers.append(str(result["answer"]))
                             evidence_ids.extend(result.get("evidence_document_ids", []))
                         choices.extend(RagChoice(field="menu_group_id", value=menu_id,
