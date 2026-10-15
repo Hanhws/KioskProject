@@ -1,4 +1,4 @@
-# 프론트엔드 ↔ 서버 연결 규격
+# 화면·서버 API 연결 규격
 
 프론트엔드는 `POST /api/chat`으로 한 턴씩 보냅니다. 서버 입구는 `api/index.py`의 `route_message()`입니다.
 기본 모드는 카탈로그 기반 시험용 요청 해석기와 `FakeRAG.ask()`를 사용합니다. 가짜 답변과 `FAKE-RAG-001`은 개발·시험용이며 실제 검색 근거가 아닙니다. `KIOSK_MODE=live`는 명확한 주문 표현에 기존 규칙을 재사용하고, 그 외 요청은 구조화 LLM 계획과 `CafeRAGService.ask()`를 연결합니다. 실제 API와 프론트 상태·주문 엔진의 검증 결과는 [최종 흐름 검증 기록](FINAL_VERIFICATION.md)에 있습니다. 브라우저 표시 확인은 아직 별도입니다.
@@ -6,15 +6,17 @@
 장바구니·옵션 검증·금액 계산·주문 진행 단계는 프론트엔드(`lib/order/`)가 맡습니다.
 서버는 장바구니를 직접 바꾸지 않고 **`cart_actions`로 지시만** 보냅니다. 검증에 실패하면 프론트엔드가 이유와 대안을 안내합니다.
 
-## 요청
+## 요청 형식
+
+`history`는 이전 대화이며 역할은 `user`(사용자) 또는 `assistant`(키오스크)입니다. 현재 입력은 `message`로 전달합니다. 아래 예시는 아메리카노가 담겨 있고 카페라떼의 온도를 기다리는 상황입니다.
 
 ```jsonc
 {
-  "message": "아아 두 잔이랑 치즈케이크 하나요",
-  "history": [{ "role": "user" | "assistant", "content": "..." }],   // 최근 10개
+  "message": "아이스요, 치즈케이크도 주세요",
+  "history": [{ "role": "assistant", "content": "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?" }], // 최근 10개
   "context": {
     "cart": {
-      "stage": "more",                 // greeting | more | dine_option | final_confirm | payment | pay_confirm | complete
+      "stage": "more",                 // greeting | ordering | more | dine_option | final_confirm | payment | pay_confirm | complete
       "dine_option": null,             // dine_in | takeout | null
       "payment_method": null,
       "total_krw": 3000,
@@ -35,7 +37,21 @@
 
 어댑터는 `message`를 정보 질문·추천·주문 단계로 나누고, 정보 질문과 `prior_conditions`를 RAG에 전달합니다. 주문 단계는 카탈로그에 존재하는 메뉴·옵션 ID만 `cart_actions`로 보냅니다. 추천에서는 RAG의 `related_menu_ids` 순서를 기준으로 버튼·카드를 맞추고, 프론트는 `next_action=choose_menu`인 응답만 직전 추천으로 저장합니다. `다른 거` 요청은 직전 추천 ID를 제외 조건에 더합니다. 확정된 ID 순서가 없으면 `첫 번째`로 자동 선택하지 않습니다.
 
-## 응답
+### 요청에 포함하는 상태
+
+| 항목 | 의미 |
+| --- | --- |
+| `context.cart` | 현재 장바구니, 금액, 주문 단계, 안내 중인 질문 |
+| `context.pending` | 아직 끝나지 않은 확인 요청. 없으면 `null` |
+| `pending.kind` | 온도(`temperature`), 대량 수량 확인(`quantity_confirm`), 전체 취소 확인(`clear_confirm`), 수정 대상 확인(`target`) |
+| `pending.action` | 확인 뒤 실행할 주문 초안 또는 액션 |
+| `pending.line_ids` | 수정·삭제 대상을 고를 때의 장바구니 항목 ID 목록 |
+| `context.last_recommended_menu_ids` | 직전 추천의 표시 순서. “첫 번째” 해석에 사용 |
+| `context.prior_conditions` | 다음 턴에도 유지할 추천 조건 |
+
+장바구니·보류 요청·대기 액션의 원본은 화면에 있습니다. 서버는 전달된 상태를 읽고 지시를 반환하며 별도 장바구니를 저장하지 않습니다.
+
+## 응답 형식
 
 응답은 RAG 결과에서 화면에 필요한 필드만 선택합니다. 주문 단계가 있으면 `cart_actions`를, RAG가 적용 조건을 반환하면 `prior_conditions`를 추가합니다. 실제 장바구니 변경 성공 여부와 총액은 프론트 주문 엔진에서 결정합니다.
 
@@ -51,15 +67,18 @@
 | `cart_actions` | **(통합)** 장바구니·주문 단계 지시. 순서대로 실행 |
 | `prior_conditions` | **(통합)** 다음 턴에 그대로 돌려보낼 조건. `null`이면 비움, 생략하면 유지 |
 
-## cart_actions
+## 주문 처리 지시 (`cart_actions`)
 
-`lib/order/types.ts`의 `CartAction`과 같습니다. 메뉴는 `menu_catalog.menu_group_id`, 옵션은 `options.option_id`를 씁니다.
+화면의 `lib/order/types.ts`에 정의된 `CartAction` 중 서버 응답 모델이 지원하는 지시를 사용합니다. 현재 서버 모델은 `api/index.py`에 정의되어 있습니다. 메뉴는 `menu_catalog.menu_group_id`, 옵션은 `options.option_id`를 씁니다. 아래 각 줄은 독립적인 지시 예시이며, 실제 응답에서는 배열로 반환합니다.
 
 ```jsonc
 { "type": "add_item", "menu_id": "MENU-002", "temperature": "ICE", "options": { "OPT-003": 1 }, "quantity": 2 }
 { "type": "add_item", "menu_id": "MENU-002", "temperature": "ICE", "pending_resolution": true } // 보류 중인 온도 질문에 대한 답
 { "type": "update_item", "target": { "menu_id": "MENU-002" }, "quantity": 3 }
 { "type": "update_item", "target": { "line_id": "L1" }, "set_options": { "OPT-001": 0 } }   // 0 = 옵션 제거 (6.3)
+{ "type": "update_item", "target": { "line_id": "L1" }, "temperature": "ICE" }          // 이미 담긴 음료의 온도 변경
+{ "type": "update_item", "target": { "pending": true }, "quantity": 3 }                  // 담기 전 보류 초안의 수량 변경
+{ "type": "update_item", "target": { "pending": true }, "set_options": { "OPT-001": 0 } } // 보류 초안의 샷 제거
 { "type": "remove_item", "target": { "menu_ids": ["MENU-002", "MENU-004"] } }             // 여러 개면 프론트가 되물음 (6.5.1)
 { "type": "replace_menu", "target": { "menu_id": "MENU-001" }, "menu_id": "MENU-002" }    // 온도 유지 (6.5)
 { "type": "clear_cart" }                       // 확인 질문 후 비움 (6.7)
@@ -67,19 +86,28 @@
 { "type": "finish_ordering" }                  // "그게 다예요" (6.8)
 { "type": "show_cart" }                        // "뭐 담겼어요?" (6.6)
 { "type": "confirm_order" }                    // "이대로 주문할게요" (7.1)
-{ "type": "select_payment", "method": "card" | "easy_pay" | "cash" }
 ```
 
+결제 수단 선택(`select_payment`), 모의 결제 확정(`pay_now`), 새 주문 시작(`new_order`)은 화면의 주문 엔진이 처리하는 지시입니다. 현재 서버의 `cart_actions` 응답 모델에는 포함되지 않습니다. 카드·간편결제를 지원하며 현금은 불가 안내를 표시합니다.
+
 - 온도·수량·옵션은 빠져도 됩니다. 온도가 필요하면 프론트가 온도만 묻고(6.1.1), 10잔 이상이면 확인합니다(6.1.3).
-- 옵션 적용 가능 여부·최대 횟수·추가금은 프론트가 다시 검사합니다. 서버가 틀린 지시를 보내도 장바구니가 잘못되지 않습니다.
+- 옵션 적용 가능 여부·최대 횟수·추가금은 주문 엔진이 다시 검사합니다. 요청 대상과 의도 해석의 정확성은 별도 흐름 시험으로 확인합니다.
 - 질문이 생기면 남은 액션은 보관했다가 답을 받은 뒤 이어서 처리합니다. 예: `[라떼(온도 없음), 치즈케이크]` → 온도 질문 → 답 → 둘 다 담김.
 - 보류 중 정보 질문이나 장바구니 확인은 장바구니·`pending`·`queued`를 유지하고 이전 질문을 다시 보여 줍니다. 온도 답 없는 독립 새 주문은 사용자 결정에 따라 먼저 처리한 뒤 기존 온도를 다시 묻습니다. 새 주문에도 확인이 필요하면 새 주문의 확인을 먼저 하고, 원래 보류 주문을 대기 액션으로 이어 갑니다. 다만 메뉴 교체 중 온도 확인은 원래 교체 대상을 보존해야 하므로 새 액션을 대기시킵니다.
 - 주문 관련 요청이면 `answer`는 비워도 됩니다. 프론트가 담은 결과·금액·다음 질문을 HTI 문구로 안내합니다.
 - 판매하지 않는 메뉴의 주문 요청은 RAG의 대안 결과를 조회합니다. RAG가 후보 ID를 반환하지 않으면 기존 팀 대안 CSV의 해당 규칙을 사용합니다. 카탈로그에 있는 메뉴 ID만 최대 3개까지 버튼·카드로 표시하며, 사용자가 선택하기 전에는 `cart_actions`를 만들지 않습니다. 보류 중이었다면 기존 질문을 다시 보여 줍니다. CSV로 대체한 응답에는 RAG 검색 근거를 임의로 붙이지 않습니다. Mock의 대안 문구는 개발·시험용입니다.
 
-## 프론트가 서버 없이 처리하는 입력
+## 후속 요청 처리 원칙
 
-키오스크가 닫힌 질문을 하고 있을 때의 짧은 답은 서버로 보내지 않습니다 (`lib/order/stageReply.ts`).
+- 온도 질문의 답은 `pending_resolution: true`로 기존 초안에 연결합니다. 새 메뉴 추가와 구분해 중복 담기를 방지합니다.
+- 온도 미정 초안의 샷·수량 변경은 `target.pending: true`로 전달합니다. 이미 담긴 같은 메뉴와 혼동될 수 있으면 대상을 확인합니다.
+- 담긴 음료에 대한 짧은 온도 변경은 음료 항목만 대상으로 합니다. 대상이 여러 개면 확인하고, 디저트는 변경하지 않습니다. 동일 온도 요청은 수량 추가로 처리하지 않습니다.
+- ‘케이꾸’처럼 케이크 종류를 가리키는 표현은 실제 케이크 후보로 연결하며, 종류가 정해지기 전에는 임의로 담지 않습니다.
+- 정보 답변과 원래 질문으로의 복귀 안내는 한 말풍선으로 합칩니다. 실제 주문 변경 결과와 금액은 엔진 실행 후 표시합니다.
+
+## 화면에서 서버 없이 처리하는 입력
+
+키오스크가 온도나 확인 질문을 하고 있을 때, 확실한 단답만 서버 없이 처리합니다 (`lib/order/stageReply.ts`). “아이스요, 케이크도 주세요”, “네, 그런데 쿠키도 추가요”처럼 다른 요청이 섞이면 서버로 전달합니다.
 
 | 상황 | 예 |
 | --- | --- |
