@@ -11,7 +11,7 @@ from typing import Any, Iterable, Optional
 from langchain_openai import ChatOpenAI
 
 from .data_loader import RagConfig, RagData, normalize_text
-from .menu_lookup import variants_for_menu_id
+from .menu_lookup import recommendation_attributes, variants_for_menu_id
 from .prompts import (
     ANSWER_PROMPT,
     PLANNER_PROMPT,
@@ -50,6 +50,7 @@ def plan_question(
         ),
         "types": sorted({menu["type"] for menu in data.tables["menu_catalog"]}),
         "categories": sorted({menu["category"] for menu in data.tables["menu_catalog"]}),
+        "recommendation_attributes": json.dumps(recommendation_attributes(data), ensure_ascii=False),
     })
 
 
@@ -77,6 +78,24 @@ def normalize_query_plan(
 ) -> QueryPlan:
     """LLM 계획의 명백한 오해석만 기존 QueryPlan 필드 안에서 보정한다."""
     normalized_question = normalize_text(question)
+    vocabulary = recommendation_attributes(data)
+    allowed_preferences = {value for values in vocabulary.values() for value in values}
+    plan.inferred_preferences = list(dict.fromkeys(
+        term for term in plan.inferred_preferences if term in allowed_preferences
+    ))[:6]
+    if plan.intent == "recommend" and (plan.inferred_preferences or plan.situation_response):
+        # 감정 원문을 필수 문자열 일치로 취급하지 않는다. 의미 해석은 LLM이 담당한다.
+        searchable = normalize_text(" ".join(str(value or "") for menu in data.catalog_by_id.values() for value in menu.values()))
+        plan.preferred_terms = [term for term in plan.preferred_terms if normalize_text(term) and normalize_text(term) in searchable]
+        if "required_situations" not in plan.explicit_constraint_updates:
+            inferred_situations = [term for term in plan.required_situations if term in vocabulary["recommended_situations"]]
+            plan.inferred_preferences = list(dict.fromkeys([*plan.inferred_preferences, *inferred_situations]))[:6]
+            plan.required_situations = []
+    if plan.situation_response and any(term in plan.situation_response for term in (
+        "도움", "치료", "회복", "개선", "완화", "해소", "낫게", "풀릴",
+    )):
+        # 공감 문장에 검증되지 않은 감정·건강 개선 약속이 끼면 노출하지 않는다.
+        plan.situation_response = None
     if plan.intent == "recommend" and re.search(
         r"우유(?:를|가|는)?(?:못먹|못마|안먹|안마|없는|없이|빼|제외|알레르기|알러지)", normalized_question
     ):

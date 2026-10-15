@@ -90,10 +90,11 @@ class ChatApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(backend.calls, [(
             "아메리카노 가격 알려 주세요",
-            {"requested_fields": ["가격"]},
+            {"requested_fields": ["가격"], "_dialogue_intent": "information"},
             [{"role": "assistant", "content": "안녕하세요."}],
         )])
         self.assertNotIn("cart_actions", response.json())
+        self.assertNotIn("_dialogue_intent", response.json().get("prior_conditions", {}))
 
     def test_default_fake_accepts_frontend_request_without_key(self):
         with TestClient(create_app()) as client:

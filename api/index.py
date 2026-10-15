@@ -387,6 +387,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 conditions["excluded_menu_ids"] = list(dict.fromkeys([
                     *conditions.get("excluded_menu_ids", []), *recommended,
                 ]))
+            conditions = {**(conditions or {}), "_dialogue_intent": step.kind}
             result = rag.ask(
                 question,
                 prior_conditions=conditions,
@@ -434,6 +435,8 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 prior_conditions = result["applied_conditions"]
             elif conditions is not None:
                 prior_conditions = conditions
+            if prior_conditions is not None:
+                prior_conditions = {key: value for key, value in prior_conditions.items() if key != "_dialogue_intent"}
             last_menu = _menu_id(step.menu_term)
             if not last_menu:
                 mentions = _menu_mentions(step.text)

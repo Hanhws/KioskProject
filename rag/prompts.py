@@ -29,6 +29,9 @@ class QueryPlan(BaseModel):
     required_coffee_strength: Optional[Literal["없음", "보통", "진함", "해당 없음"]] = None
     required_situations: list[str] = Field(default_factory=list)
     preferred_terms: list[str] = Field(default_factory=list)
+    inferred_preferences: list[str] = Field(default_factory=list, description="상황·감정에서 추론한 선호. 실제 추천 속성 값만 사용하며 필수 조건이 아닌 순위 기준")
+    situation_response: Optional[str] = Field(default=None, max_length=100, description="상황을 받아 주는 짧은 한 문장. 메뉴·성분·건강 효과는 말하지 않음")
+    explicit_constraint_updates: list[str] = Field(default_factory=list, description="현재 발화에서 사용자가 명시적으로 변경한 필수 조건의 필드명. 감정으로 추측한 변경은 넣지 않음")
     excluded_menu_ids: list[str] = Field(default_factory=list)
     excluded_allergens: list[str] = Field(default_factory=list)
     option_terms: list[str] = Field(default_factory=list)
@@ -106,7 +109,23 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
 - '과일 들어간 거', '과일 메뉴'처럼 재료나 맛을 기준으로 메뉴를 찾는 요청은
   recommend로 분류하고 핵심 표현인 '과일'을 preferred_terms에 기록합니다.
 - '커피 말고'는 required_type='음료', required_coffee_strength='없음'으로 기록합니다. 카페인 0이라고 해석하지 않습니다.
-- 더운 날·저녁처럼 상황 추천이면 실제 표현을 required_situations에 기록합니다.
+- 메뉴명이나 '추천'이라는 말이 없어도 카페에서 먹을 것을 고르는 맥락이면 상황·감정·취향을 해석해 recommend로 분류합니다.
+  이전 누적 조건의 _dialogue_intent='recommend'이면 대화 제어기가 추천 요청으로 판단한 것입니다. 일반 감정 공유인 general로 되돌리지 않습니다.
+  우울함·피로·입맛 없음·색다른 경험·기쁜 기분·끼니를 거른 상황 등은 예시일 뿐이며 다른 표현도 같은 원리로 해석합니다.
+  감정 이야기를 나누는 중이거나 추천을 원하지 않는다고 한 경우에는 general로 짧게 반응하고 임의 추천하지 않습니다.
+- 상황·감정에서 추론한 취향은 inferred_preferences에 실제 추천 속성 값으로 기록합니다.
+  예: 기분 전환에는 달콤한 맛, 피로에는 커피 계열, 가벼운 취향에는 상큼한 맛, 허기에는 디저트 계열을 우선 고려할 수 있습니다.
+  이는 권유 가능성이지 의학적 효과나 필수 조건이 아닙니다. 포만감·식사 대용·피로 회복 등의 효능을 데이터 없이 보장하지 않습니다.
+  끼니를 거른 상황에서 음식을 원하는 경우에는 실제 category의 샌드위치·브런치나 디저트를 맛보다 우선 고려합니다.
+  예: '점심을 못 먹었어'의 inferred_preferences=['샌드위치·브런치', '디저트', '가벼운 식사']; 이는 고정 메뉴 지정이 아니라 속성 해석의 예시입니다.
+  '우울', '점심 못 먹음' 같은 원문을 preferred_terms/required_situations에 넣어 일치 검색하지 않습니다.
+  inferred_preferences는 실제 추천 속성에서 골라 중요도 순으로 최대 6개 사용하고, 기존 알레르기·가격·카페인·온도 등의 조건을 바꾸지 않습니다.
+- 더운 날·저녁 등의 상황도 제공된 실제 추천 속성으로 해석합니다. required_situations는 사용자가 필수로 지정하고 실제 속성에 있는 경우에만 사용합니다.
+- 상황 표현에는 situation_response에 쉬운 존댓말로 짧게 반응합니다. 사용자가 말한 상태를 단정·진단하지 말고 메뉴명·성분·효능은 넣지 않습니다.
+  예: '많이 피곤하신가 봐요.', '점심을 못 드셨군요.', '좋은 일이 있으셨나 봐요.'처럼 공감만 합니다.
+  '달콤한 메뉴가 도움이 돼요', '피로가 회복돼요' 같은 효과 표현은 사용하지 않습니다.
+- 이전 필수 조건은 유지하고, 사용자가 명시적으로 바꾼 필드만 explicit_constraint_updates에 기록합니다.
+  예: '이제 5천 원까지 괜찮아'는 max_price_krw 변경, '피곤해'만으로는 카페인 상한이나 커피 제외 조건을 바꾸지 않습니다.
 - '다른 추천'에서는 이전 조건을 유지하고 이전 추천 메뉴 ID를 excluded_menu_ids에 둡니다.
 - intent='compare'인데 비교 기준이 없을 때만 requested_fields에 맛·가격·커피 진하기를 넣습니다.
   일반 추천 요청에는 사용자가 직접 물은 항목만 requested_fields에 넣습니다.
@@ -118,7 +137,7 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
         "human",
         "사용자 질문: {question}\n이전 누적 조건: {prior_conditions}\n"
         "이전 조회 항목: {previous_requested_fields}\n최근 대화: {recent_history}\n"
-        "실제 메뉴 type: {types}\n실제 category: {categories}",
+        "실제 메뉴 type: {types}\n실제 category: {categories}\n실제 추천 속성: {recommendation_attributes}",
     ),
 ])
 
@@ -131,6 +150,8 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
 
 답변 규칙:
 - 쉬운 존댓말로 질문한 내용부터 직접 답합니다.
+- 상황·감정 추천에서는 situation_response를 짧은 반응으로 사용할 수 있습니다. 메뉴로 감정·건강이 개선된다고 보장하지 않습니다.
+- intent='general'인 단순 감정 공유에는 짧게 공감하고 임의로 메뉴를 추천하지 않습니다. related_menu_ids와 메뉴 choices는 비웁니다.
 - 현재 질문에서 요청한 내용만 답하고, 메뉴 데이터에 있다는 이유만으로 맛·가격·용량·
   카페인·영양 정보를 덧붙이지 않습니다.
 - intent='order'이면 메뉴명, 온도, 수량, 매장/포장 여부와 주문 확인에 필요한 가격만

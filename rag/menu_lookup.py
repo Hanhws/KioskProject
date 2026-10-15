@@ -10,6 +10,34 @@ from .data_loader import RagData, normalize_text, pipe_values
 from .prompts import QueryPlan
 
 
+RECOMMENDATION_ATTRIBUTE_FIELDS = (
+    "type", "category", "flavor_tags", "texture", "sweetness_level", "coffee_strength",
+    "recommended_for", "recommended_situations",
+)
+
+
+def recommendation_attributes(data: RagData) -> dict[str, list[str]]:
+    """LLM이 상황을 실제 속성으로 해석할 수 있도록 카탈로그 어휘만 제공한다."""
+    return {
+        field: sorted({value for menu in data.catalog_by_id.values() for value in pipe_values(menu.get(field))})
+        for field in RECOMMENDATION_ATTRIBUTE_FIELDS
+    }
+
+
+def rank_situation_candidates(menu_ids: list[str], data: RagData, plan: QueryPlan) -> list[str]:
+    """필수 조건을 통과한 후보 안에서만 추론한 선호를 반영한다. 동점은 원래 순서 유지."""
+    terms = [normalize_text(term) for term in plan.inferred_preferences if normalize_text(term)]
+    if not terms:
+        return menu_ids
+    def score(menu_id: str) -> int:
+        values = {
+            normalize_text(value) for field in RECOMMENDATION_ATTRIBUTE_FIELDS
+            for value in pipe_values(data.catalog_by_id[menu_id].get(field))
+        }
+        return sum(len(terms) - index for index, term in enumerate(terms) if term in values)
+    return sorted(menu_ids, key=score, reverse=True)
+
+
 def find_unavailable_rule(question: str, data: RagData) -> Optional[dict[str, Any]]:
     normalized_question = normalize_text(question)
     matches = [
@@ -170,7 +198,7 @@ def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str
             eligible_variants.append(variant)
         if eligible_variants:
             candidates.append(menu_id)
-    return candidates
+    return rank_situation_candidates(candidates, data, plan)
 
 
 def resolve_option_ids(option_terms: Iterable[str], data: RagData) -> list[str]:

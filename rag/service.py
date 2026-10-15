@@ -29,6 +29,13 @@ from .prompts import AnswerDraft, QueryPlan
 from .retriever import retrieve_evidence, search_only, semantic_menu_candidate_ids
 
 
+PERSISTED_RECOMMENDATION_FILTERS = (
+    "temperature", "max_price_krw", "max_caffeine_mg", "decaf_required", "required_type",
+    "required_category", "required_sweetness_level", "required_coffee_strength",
+    "required_situations", "preferred_terms", "excluded_menu_ids",
+)
+
+
 def brief_recommendation_answer(menu_ids: list[str], data: RagData) -> str:
     suggestions = []
     for menu_id in menu_ids[:4]:
@@ -164,6 +171,8 @@ class CafeRAGService:
             if plan is None:
                 if use_llm:
                     planning_conditions = dict(prior_conditions or {})
+                    planning_conditions.pop("explicit_constraint_updates", None)
+                    planning_conditions.pop("situation_response", None)
                     previous_requested_fields = planning_conditions.pop(
                         "requested_fields", []
                     )
@@ -186,16 +195,25 @@ class CafeRAGService:
         except Exception as error:
             return self._error_result("planner_error", error)
 
+        intent_hint = (prior_conditions or {}).get("_dialogue_intent")
+        if query_plan.intent in {"general", "ambiguous"} and (
+            intent_hint == "recommend" or (intent_hint != "information" and query_plan.inferred_preferences)
+        ):
+            query_plan.intent = "recommend"
         if query_plan.intent == "ambiguous" and (prior_conditions or {}).get("clarification_count", 0) >= 2:
             query_plan.intent = "recommend"
+        query_plan = normalize_query_plan(query_plan, self.data, question)
         if query_plan.intent == "recommend" and prior_conditions:
+            for field in PERSISTED_RECOMMENDATION_FILTERS:
+                prior_value = prior_conditions.get(field)
+                if prior_value is not None and prior_value != [] and field not in query_plan.explicit_constraint_updates:
+                    setattr(query_plan, field, prior_value)
             query_plan.clarification_count = max(
                 query_plan.clarification_count, int(prior_conditions.get("clarification_count", 0))
             )
             query_plan.excluded_allergens = list(dict.fromkeys([
                 *prior_conditions.get("excluded_allergens", []), *query_plan.excluded_allergens,
             ]))
-        query_plan = normalize_query_plan(query_plan, self.data, question)
 
         unavailable_rule = find_unavailable_rule(question, self.data)
         if not unavailable_rule and query_plan.unavailable_term:
@@ -398,10 +416,15 @@ class CafeRAGService:
                 for menu_id in draft.related_menu_ids
                 if menu_id in recommendation_ids
             ]
+            if query_plan.inferred_preferences:
+                # 모델이 고른 임의 순서가 실제 속성으로 계산한 우선순위를 덮어쓰지 않게 한다.
+                recommended_menu_ids = recommendation_ids
             if not recommended_menu_ids:
                 recommended_menu_ids = recommendation_ids
             recommended_menu_ids = list(dict.fromkeys(recommended_menu_ids))[:3 if stop_clarifying else 4]
             answer = brief_recommendation_answer(recommended_menu_ids, self.data)
+            if query_plan.situation_response:
+                answer = query_plan.situation_response.strip() + "\n" + answer
             status = "ok" if recommended_menu_ids else "no_candidates"
             valid_menu_ids = recommended_menu_ids
             valid_evidence_ids = [
@@ -424,6 +447,12 @@ class CafeRAGService:
             answer = draft.answer
             status = draft.status
             next_action = draft.next_action
+
+        if query_plan.intent == "general" and intent_hint == "information":
+            valid_menu_ids = []
+            valid_choices = [choice for choice in valid_choices if choice.get("field") == "free_text"]
+            if next_action == "choose_menu":
+                next_action = None
 
         if query_plan.intent == "recommend":
             if status == "ok" and valid_menu_ids:
@@ -453,6 +482,12 @@ class CafeRAGService:
                            f"{excluded} 포함 여부를 직원에게 확인해 주세요.")
             if status == "ok" and valid_menu_ids and "우유" in query_plan.excluded_allergens:
                 answer = "우유가 포함된 것으로 표시된 메뉴를 제외하고 추천했어요.\n" + answer
+        applied_conditions = query_plan.model_dump(exclude_none=True, exclude={"explicit_constraint_updates", "situation_response"})
+        if query_plan.intent != "recommend" and prior_conditions:
+            # 정보·잡담을 사이에 끼워도 다음 추천의 필수 조건을 지우지 않는다.
+            for field in (*PERSISTED_RECOMMENDATION_FILTERS, "excluded_allergens", "clarification_count"):
+                if field in prior_conditions:
+                    applied_conditions[field] = prior_conditions[field]
         return {
             "answer": answer,
             "related_menu_ids": valid_menu_ids,
@@ -461,7 +496,7 @@ class CafeRAGService:
             "status": status,
             "follow_up_question": None if stop_clarifying else draft.follow_up_question,
             "choices": valid_choices,
-            "applied_conditions": query_plan.model_dump(exclude_none=True),
+            "applied_conditions": applied_conditions,
             "query_plan": query_plan.model_dump(),
             "claims": valid_claims,
             "grounding_validation": {

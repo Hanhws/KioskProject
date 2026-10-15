@@ -32,7 +32,7 @@ class RecommendationRAG:
             "status": "ok", "related_menu_ids": ids, "evidence_document_ids": [],
             "choices": [{"field": "menu_group_id", "value": menu_id, "label": name, "source_id": menu_id}
                         for menu_id, name in zip(ids, names)],
-            "applied_conditions": prior_conditions or {"required_sweetness_level": "높음"},
+            "applied_conditions": {"required_sweetness_level": "높음", **(prior_conditions or {})},
         }
 
 
@@ -510,6 +510,42 @@ class DialogueTests(unittest.TestCase):
 
 
 class PaymentRequestTests(unittest.TestCase):
+    def test_situation_turn_uses_llm_plan_and_preserves_pending_order(self):
+        class SituationModel:
+            def invoke(self, prompt):
+                self.prompt = prompt
+                return DialoguePlan(steps=[TurnStep(kind="recommend", text="과제하느라 밤을 새웠어요")])
+
+        model = SituationModel()
+        planner = LLMDialoguePlanner.__new__(LLMDialoguePlanner)
+        planner.model = model
+        body = pending_latte("과제하느라 밤을 새웠어요")
+        body["context"]["prior_conditions"] = {"max_price_krw": 3000, "excluded_allergens": ["우유"]}
+        body["history"] = [{"role": "assistant", "content": "어떤 메뉴가 좋으세요?"}]
+        rag = RecordingRAG()
+        with TestClient(create_app(rag, planner=planner)) as client:
+            result = client.post("/api/chat", json=body).json()
+        self.assertIn("과제하느라 밤을 새웠어요", model.prompt)
+        self.assertIn("어떤 메뉴가 좋으세요?", model.prompt)
+        self.assertEqual(rag.questions, ["과제하느라 밤을 새웠어요"])
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["next_action"], "resume_pending_question")
+        self.assertEqual(result["resume_prompt"], body["context"]["cart"]["pending_question"])
+        self.assertEqual(result["prior_conditions"], body["context"]["prior_conditions"])
+
+    def test_emotion_sharing_can_remain_information_without_forced_recommendation(self):
+        class SharingModel:
+            def invoke(self, prompt):
+                return DialoguePlan(steps=[TurnStep(kind="information", text="그냥 기분 이야기만 하고 싶어요")])
+
+        planner = LLMDialoguePlanner.__new__(LLMDialoguePlanner)
+        planner.model = SharingModel()
+        with TestClient(create_app(RecordingRAG(), planner=planner)) as client:
+            result = client.post("/api/chat", json=request("그냥 기분 이야기만 하고 싶어요")).json()
+        self.assertNotIn("cart_actions", result)
+        self.assertEqual(result["related_menu_ids"], [])
+        self.assertIsNone(result["next_action"])
+
     def test_information_with_spurious_pending_step_resumes_original_question(self):
         class SpuriousPendingPlanner:
             def plan(self, message, context):
