@@ -18,6 +18,20 @@ function response(partial: Partial<ChatResponse>): ChatResponse {
 }
 
 describe("서버 응답 처리 (store)", () => {
+  it.each(["engine", "server"] as const)("%s 경로의 새 주문은 이전 추천·조건·대화까지 초기화한다", (path) => {
+    const old = {
+      ...initialKioskState(),
+      order: { ...initialOrderState(), stage: "complete" as const, orderNumber: "123" },
+      lastRecommended: ["MENU-006"],
+      priorConditions: { required_sweetness_level: "높음" },
+      pendingMenuConfirmation: "MENU-002",
+    };
+    const result = kioskReducer(old, path === "engine"
+      ? { type: "engine", actions: [{ type: "new_order" }] }
+      : { type: "server", response: response({ cart_actions: [{ type: "new_order" }] }) });
+    expect(result).toEqual(initialKioskState());
+  });
+
   it("추천 응답: 메뉴 카드와 선택 버튼, 직전 추천 목록 저장", () => {
     const state = kioskReducer(
       initialKioskState(),

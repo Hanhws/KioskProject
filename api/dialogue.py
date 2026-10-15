@@ -25,7 +25,7 @@ class TurnStep(BaseModel):
     kind: Literal[
         "information", "recommend", "add", "update_option", "update_quantity",
         "remove", "replace", "show_cart", "clear_cart", "finish_ordering",
-        "confirm_order", "set_dine_option", "set_order_mode", "answer_pending", "update_temperature", "temperature_conflict", "unknown",
+        "confirm_order", "set_dine_option", "select_payment", "new_order", "set_order_mode", "answer_pending", "update_temperature", "temperature_conflict", "unknown",
     ]
     text: str
     menu_term: str | None = None
@@ -35,6 +35,7 @@ class TurnStep(BaseModel):
     option_quantity: int | None = Field(default=None, ge=1)
     remove_option: bool = False
     dine_option: Literal["dine_in", "takeout"] | None = None
+    payment_method: Literal["card", "easy_pay", "cash"] | None = None
     order_mode: Literal["quick", "dialogue"] | None = None
     ordinal: int | None = Field(default=None, ge=1)
     option_terms: list[str] = Field(default_factory=list)
@@ -46,6 +47,36 @@ class DialoguePlan(BaseModel):
 
 class Planner(Protocol):
     def plan(self, message: str, context: dict) -> DialoguePlan: ...
+
+
+def is_payment_request(message: str) -> bool:
+    text = re.sub(r"[.!~〜]+$", "", message.strip()).strip()
+    return bool(re.fullmatch(r"(?:결제|계산)\s*(?:하기|해\s*줘(?:요)?|해\s*주세요|할게요|진행해\s*주세요)", text))
+
+
+def control_step(message: str, context: dict) -> TurnStep | None:
+    """메뉴 주문이 섞이지 않은 명확한 화면 명령만 모델 없이 연결한다."""
+    text = re.sub(r"[.!~〜]+$", "", message.strip()).strip()
+    key = re.sub(r"\s+", "", text)
+    if key in {"장바구니", "장바구니보기", "주문내역", "주문내역보기"}:
+        return TurnStep(kind="show_cart", text=message)
+    if key == "주문마치기":
+        return TurnStep(kind="finish_ordering", text=message)
+    if key in {"전체취소", "다취소할게요", "전부취소할게요"}:
+        return TurnStep(kind="clear_cart", text=message)
+    if key in {"새주문시작", "새로주문할게요"}:
+        return TurnStep(kind="new_order", text=message)
+    if key in {"결제수단바꾸기", "결제방법바꾸기", "결제수단바꿔줘", "결제수단바꿔주세요"} and context.get("cart", {}).get("stage") in {"payment", "pay_confirm"}:
+        return TurnStep(kind="confirm_order", text=message)
+    if key == "네,주문할게요" and context.get("cart", {}).get("stage") == "final_confirm":
+        return TurnStep(kind="confirm_order", text=message)
+    method = re.fullmatch(r"(카드|신용카드|체크카드|간편결제|카카오페이|네이버페이|삼성페이|애플페이|토스페이|현금)(?:로)?(?:결제)?(?:할게요|해주세요|해줘요|해줘|요)?", key)
+    if method:
+        name = method.group(1)
+        return TurnStep(kind="select_payment", text=message, payment_method=(
+            "cash" if name == "현금" else "card" if name in {"카드", "신용카드", "체크카드"} else "easy_pay"
+        ))
+    return None
 
 
 def _menu_mentions(text: str) -> list[tuple[int, int, str]]:
@@ -128,6 +159,11 @@ class MockPlanner:
     """Catalog based rule planner for local tests and clear live order phrases."""
 
     def plan(self, message: str, context: dict) -> DialoguePlan:
+        if is_payment_request(message):
+            return DialoguePlan(steps=[TurnStep(kind="finish_ordering", text=message)])
+        control = control_step(message, context)
+        if control:
+            return DialoguePlan(steps=[control])
         if context.get("cart", {}).get("stage") == "final_confirm":
             # '네, 그런데 ... 추가'는 최종 동의가 아니라 주문 변경이다.
             message = re.sub(r"^\s*(?:네|예|응)\s*[,，]\s*(?:그런데|근데|하지만)\s*", "", message)
@@ -285,7 +321,7 @@ class LLMDialoguePlanner:
         )
         clear_edit = len(rule_plan.steps) == 1 and rule_plan.steps[0].kind in {"update_option", "update_temperature"}
         category_order = any(step.kind == "add" and _category_term(step.menu_term or "") for step in rule_plan.steps) and all(step.kind == "add" for step in rule_plan.steps)
-        if explicit_order or pending_add or quantity_change or clear_edit or category_order:
+        if explicit_order or pending_add or quantity_change or clear_edit or category_order or is_payment_request(message) or control_step(message, context):
             return rule_plan
 
         menu_names = [m["name"] for m in MENUS]
@@ -302,6 +338,7 @@ class LLMDialoguePlanner:
             "수량 변경은 update_quantity, 옵션 추가·제거는 update_option(remove_option을 표시), 메뉴 교체는 replace(replacement_term 포함), "
             "메뉴 삭제는 remove, 장바구니 확인은 show_cart, 전체 취소는 clear_cart, 주문 마무리는 finish_ordering, "
             "최종 확인은 confirm_order, 매장·포장은 set_dine_option으로 두세요. "
+            "결제 수단 선택은 select_payment(payment_method=card/easy_pay/cash), 새 주문 시작은 new_order로 두세요. "
             "한 주문의 HOT/ICE가 충돌하면 temperature_conflict로 두세요. "
             "빠른 주문/대화 주문 방식 전환은 set_order_mode(order_mode 포함)로 두세요. "
             "같은 메뉴 두 잔 중 한 잔만 옵션이 다르면 두 개의 add로 나누세요. "

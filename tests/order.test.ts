@@ -284,6 +284,83 @@ describe("장바구니 (cart)", () => {
 });
 
 describe("주문 진행 흐름 (flow)", () => {
+  it.each(["more", "dine_option", "final_confirm", "payment", "pay_confirm", "complete", "temperature", "target", "quantity_confirm", "clear_confirm"])("%s 단계의 주문 버튼 문구를 채팅해도 같은 액션을 실행한다", (stage) => {
+    let state = run(initialOrderState(), add(AMERICANO, { temperature: "ICE" })).state;
+    if (stage === "temperature") state = run(initialOrderState(), add(LATTE)).state;
+    else if (stage === "target") {
+      state = run(initialOrderState(), add(VANILLA_LATTE, { temperature: "ICE" }),
+        add(VANILLA_LATTE, { temperature: "ICE", options: { "OPT-001": 1, "OPT-003": 1 } })).state;
+      state = run(state, { type: "remove_item", target: { menu_id: VANILLA_LATTE } }).state;
+    }
+    else if (stage === "quantity_confirm") state = run(initialOrderState(), add(AMERICANO, { temperature: "ICE", quantity: 100 })).state;
+    else if (stage === "clear_confirm") state = run(state, { type: "clear_cart" }).state;
+    else if (stage !== "more") {
+      state = run(state, { type: "finish_ordering" }).state;
+      if (stage !== "dine_option") {
+        state = run(state, { type: "set_dine_option", value: "takeout" }).state;
+        if (stage !== "final_confirm") {
+          state = run(state, { type: "confirm_order" }).state;
+          if (stage !== "payment") {
+            state = run(state, { type: "select_payment", method: "card" }).state;
+            if (stage === "complete") state = run(state, { type: "pay_now" }).state;
+          }
+        }
+      }
+    }
+    for (const choice of stagePrompt(state).choices) {
+      if (["send", "focus_input", "open_menu", "edit_line"].includes(choice.action.type)) continue;
+      expect(interpretStageReply(state, choice.label), choice.label).toEqual([choice.action]);
+    }
+  });
+
+  it("보류 질문 중 장바구니 보기를 채팅해도 보류·대기 주문을 유지한다", () => {
+    const state = run(initialOrderState(), add(LATTE), add(CHEESECAKE)).state;
+    const actions = interpretStageReply(state, "장바구니 보기");
+    expect(actions).toEqual([{ type: "show_cart" }]);
+    const result = run(state, ...actions!);
+    expect(result.state.pending).toEqual(state.pending);
+    expect(result.state.queued).toEqual(state.queued);
+  });
+
+  it("결제 수단의 자연어 입력도 버튼과 같고 복합 변경은 가로채지 않는다", () => {
+    const state = { ...initialOrderState(), stage: "payment" as const };
+    expect(interpretStageReply(state, "카드로 결제할게요")).toEqual([{ type: "select_payment", method: "card" }]);
+    expect(interpretStageReply(state, "간편결제로 할게요")).toEqual([{ type: "select_payment", method: "easy_pay" }]);
+    expect(interpretStageReply(state, "카드로 할게요, 케이크도 추가요")).toBeNull();
+  });
+
+  it.each(["결제하기", "결제해 줘", "결제해 주세요", "결제할게요", "계산하기"])("채팅 '%s'로 단계별 확인 후 모의 결제를 완료한다", (text) => {
+    let result = run(initialOrderState(), add(AMERICANO, { temperature: "ICE" }));
+    result = run(result.state, ...interpretStageReply(result.state, text)!);
+    expect(result.state.stage).toBe("dine_option");
+    result = run(result.state, ...interpretStageReply(result.state, "포장이요")!);
+    expect(result.state.stage).toBe("final_confirm");
+    result = run(result.state, ...interpretStageReply(result.state, text)!);
+    expect(result.state.stage).toBe("payment");
+    expect(result.state.orderNumber).toBeNull();
+    result = run(result.state, ...interpretStageReply(result.state, "카드로 할게요")!);
+    expect(result.state.stage).toBe("pay_confirm");
+    const before = result.state;
+    const actions = interpretStageReply(before, text)!;
+    expect(actions).toEqual([{ type: "pay_now" }]);
+    result = run(before, ...actions);
+    expect(result.state).toEqual(run(before, { type: "pay_now" }).state);
+    expect(result.state.stage).toBe("complete");
+    expect(result.reply.text).toContain("모의 결제");
+    expect(priceCart(result.state.lines).total).toBe(2500);
+    expect(run(result.state, { type: "pay_now" }).state.orderNumber).toBe(result.state.orderNumber);
+  });
+
+  it("채팅 결제 요청은 보류 질문·빈 주문·복합 변경을 건너뛰지 않는다", () => {
+    const empty = initialOrderState();
+    expect(run(empty, ...interpretStageReply(empty, "결제하기")!).state.orderNumber).toBeNull();
+    const pending = run(empty, add(LATTE)).state;
+    expect(interpretStageReply(pending, "결제하기")).toBeNull();
+    const ready = { ...empty, stage: "pay_confirm" as const };
+    expect(interpretStageReply(ready, "결제하기, 케이크도 추가요")).toBeNull();
+    expect(interpretStageReply(ready, "결제 가능한가요?")).toBeNull();
+  });
+
   it("6.8 → 6 매장/포장 → 7 최종 확인 → 8 결제 → 9 완료", () => {
     let result = run(initialOrderState(), add(AMERICANO, { temperature: "ICE", quantity: 2 }), add(CHEESECAKE));
     result = run(result.state, ...interpretStageReply(result.state, "그게 다예요")!);

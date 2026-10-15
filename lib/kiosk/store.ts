@@ -85,6 +85,11 @@ export function mapRagChoices(choices: RagChoice[], order: OrderState): Choice[]
 }
 
 function applyEngine(state: KioskState, actions: EngineAction[], silent = false, echo?: string): KioskState {
+  // 채팅의 새 주문도 완료 화면의 새 주문 버튼처럼 이전 대화·추천 조건을 초기화한다.
+  if (actions.length === 1 && actions[0].type === "new_order" && !state.order.pending &&
+      (state.order.stage === "complete" || state.order.lines.length === 0)) {
+    return initialKioskState();
+  }
   const prev = state.order;
   const { state: order, reply } = runActions(prev, actions);
   // silent: 장바구니 패널의 잦은 조작은 질문이 생기거나 단계가 바뀔 때만 대화창에 남긴다

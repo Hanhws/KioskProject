@@ -10,7 +10,7 @@ from typing import Any, Literal, Mapping, Protocol
 from fastapi import FastAPI
 from pydantic import BaseModel, Field, TypeAdapter
 
-from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _category_term, _menu_mentions, _option_terms, _ordinal
+from .dialogue import CATALOG, DialoguePlan, LLMDialoguePlanner, MockPlanner, Planner, TurnStep, _category_term, _menu_mentions, _option_terms, _ordinal, is_payment_request
 from .fake_rag import FakeRAG
 
 
@@ -89,6 +89,19 @@ class ConfirmOrderAction(BaseModel):
     type: Literal["confirm_order"]
 
 
+class PayNowAction(BaseModel):
+    type: Literal["pay_now"]
+
+
+class SelectPaymentAction(BaseModel):
+    type: Literal["select_payment"]
+    method: Literal["card", "easy_pay", "cash"]
+
+
+class NewOrderAction(BaseModel):
+    type: Literal["new_order"]
+
+
 class SetDineOptionAction(BaseModel):
     type: Literal["set_dine_option"]
     value: Literal["dine_in", "takeout"]
@@ -97,7 +110,7 @@ class SetDineOptionAction(BaseModel):
 CartAction = (
     AddItemAction | UpdateItemAction | RemoveItemAction | ReplaceMenuAction |
     ClearCartAction | ShowCartAction | FinishOrderingAction |
-    ConfirmOrderAction | SetDineOptionAction
+    ConfirmOrderAction | SetDineOptionAction | PayNowAction | SelectPaymentAction | NewOrderAction
 )
 ACTION_ADAPTER = TypeAdapter(CartAction)
 
@@ -209,6 +222,14 @@ def _target(cart: dict[str, Any], term: str | None, menu_id: str | None) -> tupl
 
 def _action(step: TurnStep, cart: dict[str, Any], pending: PendingContext | None, last_menu: str | None,
             recommended: list[str]) -> tuple[dict | None, str | None, str | None]:
+    if step.kind == "new_order":
+        if pending or (cart.get("lines") and cart.get("stage") != "complete"):
+            return None, "진행 중인 주문이 있어요. 모두 취소하려면 '전체 취소'라고 말씀해 주세요.", None
+        return {"type": "new_order"}, None, None
+    if step.kind == "select_payment":
+        if not step.payment_method:
+            return None, "카드와 간편결제 중 선택해 주세요.", None
+        return {"type": "select_payment", "method": step.payment_method}, None, None
     referent = not step.menu_term or bool(re.search(r"그거|그걸", step.menu_term)) or _ordinal(step.menu_term) is not None
     menu_id = _menu_id(step.menu_term) or (last_menu if referent else None)
     ordinal = step.ordinal or _ordinal(step.text)
@@ -219,6 +240,18 @@ def _action(step: TurnStep, cart: dict[str, Any], pending: PendingContext | None
     elif not menu_id and re.search(r"그거|그걸", step.text) and len(recommended) == 1:
         menu_id = recommended[0]
 
+    if step.kind == "finish_ordering" and is_payment_request(step.text):
+        if pending:
+            return None, cart.get("pending_question") or "진행 중인 주문의 확인부터 마쳐 주세요.", None
+        stage = cart.get("stage")
+        if stage in {"pay_confirm", "complete"}:
+            return {"type": "pay_now"}, None, None
+        if stage == "final_confirm":
+            return {"type": "confirm_order"}, None, None
+        if stage == "payment":
+            return None, "카드와 간편결제 중 선택해 주세요.", None
+        if stage == "dine_option":
+            return None, "매장에서 드시나요, 포장하시나요?", None
     if step.kind in {"show_cart", "clear_cart", "finish_ordering", "confirm_order"}:
         return {"type": step.kind}, None, None
     if step.kind == "set_dine_option":
@@ -411,11 +444,14 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
             if (draft and draft.get("type") == "add_item" and draft.get("menu_id") in valid_ids
                     and step.temperature):
                 actions.append({**draft, "temperature": step.temperature, "pending_resolution": True})
+            elif any(item.kind in {"information", "recommend"} for item in plan.steps) and not step.temperature:
+                # 정보 질문에 모델이 빈 온도 답변 단계를 덧붙여도 원래 주문을 재질문한다.
+                continue
             else:
                 answers.append("진행 중인 온도 질문을 확인하기 어려워요. 메뉴와 온도를 다시 알려 주세요.")
                 status = "partial" if actions else "needs_clarification"
         elif step.kind in {"add", "update_option", "update_quantity", "update_temperature", "remove", "replace",
-                           "show_cart", "clear_cart", "finish_ordering", "confirm_order", "set_dine_option"}:
+                           "show_cart", "clear_cart", "finish_ordering", "confirm_order", "set_dine_option", "select_payment", "new_order"}:
             if step.kind == "add" and not _menu_id(step.menu_term) and step.ordinal is None:
                 candidates = _menu_candidates(step.menu_term)
                 if len(candidates) > 1:
@@ -498,7 +534,7 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
 
     pending_question = request.context.cart.get("pending_question")
     if request.context.pending and pending_question and not actions and (
-        unavailable_handled or all(step.kind in {"information", "recommend"} for step in plan.steps)
+        unavailable_handled or any(step.kind in {"information", "recommend"} for step in plan.steps)
     ):
         next_action = "resume_pending_question"
         resume_prompt = pending_question

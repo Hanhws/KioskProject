@@ -495,5 +495,86 @@ class DialogueTests(unittest.TestCase):
         self.assertEqual(rag.conditions[-1]["clarification_count"], 2)
 
 
+class PaymentRequestTests(unittest.TestCase):
+    def test_information_with_spurious_pending_step_resumes_original_question(self):
+        class SpuriousPendingPlanner:
+            def plan(self, message, context):
+                return DialoguePlan(steps=[TurnStep(kind="information", text=message),
+                                           TurnStep(kind="answer_pending", text=message)])
+        with TestClient(create_app(RecordingRAG(), planner=SpuriousPendingPlanner())) as client:
+            result = client.post("/api/chat", json=pending_latte("카페이능ㄴ요?")).json()
+        self.assertEqual(result["status"], "ok")
+        self.assertIsNone(result.get("cart_actions"))
+        self.assertEqual(result["next_action"], "resume_pending_question")
+        self.assertIn("카페라떼는 따뜻한 것", result["resume_prompt"])
+        self.assertNotIn("확인하기 어려워요", result["answer"])
+
+    def test_screen_commands_reuse_order_actions_without_model_or_rag(self):
+        rag = RecordingRAG()
+        cases = [
+            ("장바구니 보기", "more", {"type": "show_cart"}),
+            ("주문 마치기", "more", {"type": "finish_ordering"}),
+            ("네, 주문할게요", "final_confirm", {"type": "confirm_order"}),
+            ("결제 수단 바꾸기", "pay_confirm", {"type": "confirm_order"}),
+            ("카드로 결제할게요", "payment", {"type": "select_payment", "method": "card"}),
+            ("간편결제로 할게요", "payment", {"type": "select_payment", "method": "easy_pay"}),
+            ("현금", "payment", {"type": "select_payment", "method": "cash"}),
+            ("새 주문 시작", "complete", {"type": "new_order"}),
+            ("전체 취소", "more", {"type": "clear_cart"}),
+        ]
+        with TestClient(create_app(rag, planner=live_planner_without_model())) as client:
+            for message, stage, action in cases:
+                with self.subTest(message=message):
+                    body = request(message, [LATTE_LINE])
+                    body["context"]["cart"]["stage"] = stage
+                    result = client.post("/api/chat", json=body)
+                    self.assertEqual(result.status_code, 200)
+                    self.assertEqual(result.json()["cart_actions"], [action])
+        self.assertEqual(rag.questions, [])
+
+    def test_new_order_does_not_erase_an_unfinished_order(self):
+        with TestClient(create_app(RecordingRAG())) as client:
+            for body in [request("새 주문 시작", [LATTE_LINE]), pending_latte("새 주문 시작")]:
+                result = client.post("/api/chat", json=body).json()
+                self.assertIsNone(result.get("cart_actions"))
+                self.assertIn("전체 취소", result["answer"])
+
+    def test_payment_phrase_with_menu_change_is_not_a_standalone_command(self):
+        from api.dialogue import control_step
+        context = {"cart": {"stage": "pay_confirm"}}
+        for message in ["카드로 할게요, 케이크도 추가요", "새 주문 시작하면 기존 주문은 없어져요?", "전체 취소 가능한가요?"]:
+            self.assertIsNone(control_step(message, context))
+
+    def test_payment_request_uses_current_stage_without_model_or_rag(self):
+        rag = RecordingRAG()
+        with TestClient(create_app(rag, planner=live_planner_without_model())) as client:
+            for message in ["결제하기", "결제해 줘", "결제해 주세요", "결제할게요", "계산하기"]:
+                for stage, action in [("more", "finish_ordering"), ("final_confirm", "confirm_order"), ("pay_confirm", "pay_now")]:
+                    with self.subTest(message=message, stage=stage):
+                        body = request(message, [LATTE_LINE])
+                        body["context"]["cart"].update(stage=stage, dine_option="takeout", payment_method="card")
+                        response = client.post("/api/chat", json=body)
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(response.json()["cart_actions"], [{"type": action}])
+        self.assertEqual(rag.questions, [])
+
+    def test_payment_request_does_not_reset_unfinished_selection(self):
+        rag = RecordingRAG()
+        with TestClient(create_app(rag)) as client:
+            for stage, question in [("payment", "카드와 간편결제"), ("dine_option", "매장에서 드시나요")]:
+                body = request("결제하기", [LATTE_LINE])
+                body["context"]["cart"]["stage"] = stage
+                result = client.post("/api/chat", json=body).json()
+                self.assertIsNone(result.get("cart_actions"))
+                self.assertIn(question, result["answer"])
+            body = request("결제하기")
+            body["context"]["pending"] = {"kind": "temperature", "action": {"type": "add_item", "menu_id": "MENU-002"}}
+            body["context"]["cart"]["pending_question"] = "카페라떼는 따뜻한 것과 아이스 중 어떤 걸로 드릴까요?"
+            result = client.post("/api/chat", json=body).json()
+            self.assertIsNone(result.get("cart_actions"))
+            self.assertIn("카페라떼는 따뜻한 것", result["answer"])
+        self.assertEqual(rag.questions, [])
+
+
 if __name__ == "__main__":
     unittest.main()
