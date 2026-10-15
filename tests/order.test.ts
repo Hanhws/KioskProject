@@ -332,6 +332,15 @@ describe("주문 진행 흐름 (flow)", () => {
     expect(result.reply.text).toContain("이대로 주문할까요?");
     expect(interpretStageReply(result.state, "네")).toEqual([{ type: "confirm_order" }]);
     expect(interpretStageReply(result.state, "네, 그런데 쿠키도 추가요")).toBeNull();
+
+    result = run(result.state, ...interpretStageReply(result.state, "네")!);
+    expect(result.state.stage).toBe("payment");
+    result = run(result.state, ...interpretStageReply(result.state, "카드로 할게요")!);
+    expect(result.state.stage).toBe("pay_confirm");
+    result = run(result.state, { type: "pay_now" });
+    expect(result.state.stage).toBe("complete");
+    expect(priceCart(result.state.lines).total).toBe(4700);
+    expect(result.reply.text).toContain("주문번호는 123번");
   });
 
   it("7.3.1 빈 장바구니로 결제 요청하면 메뉴 선택으로", () => {
