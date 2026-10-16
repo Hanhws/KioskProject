@@ -130,8 +130,17 @@ def meets_allergen_constraint(variant: dict[str, Any], plan: QueryPlan) -> bool:
     )
 
 
+def meets_sugar_limit(variant: dict[str, Any], plan: QueryPlan) -> bool:
+    # 당류가 비어 있으면 당이 적다고 볼 수 없으므로 상한이 있을 때는 제외한다.
+    if plan.max_sugar_g is None:
+        return True
+    sugar = variant.get("sugar_g")
+    return sugar is not None and sugar <= plan.max_sugar_g
+
+
 def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str]:
     candidates = []
+    lowest_sugar: dict[str, float] = {}
     preferred_terms = [
         normalize_text(term) for term in plan.preferred_terms if normalize_text(term)
     ]
@@ -195,10 +204,18 @@ def filter_recommendation_candidates(data: RagData, plan: QueryPlan) -> list[str
                     continue
             if plan.decaf_required is True and variant.get("decaf_available") != "Y":
                 continue
+            if not meets_sugar_limit(variant, plan):
+                continue
             eligible_variants.append(variant)
         if eligible_variants:
             candidates.append(menu_id)
-    return rank_situation_candidates(candidates, data, plan)
+            if plan.max_sugar_g is not None:
+                lowest_sugar[menu_id] = min(variant["sugar_g"] for variant in eligible_variants)
+    ranked = rank_situation_candidates(candidates, data, plan)
+    if plan.max_sugar_g is not None:
+        # 당 제한 요청은 맛 선호보다 당류가 낮은 메뉴를 먼저 보여 준다. 같은 당류는 선호 순서를 유지한다.
+        ranked.sort(key=lowest_sugar.__getitem__)
+    return ranked
 
 
 def resolve_option_ids(option_terms: Iterable[str], data: RagData) -> list[str]:
@@ -418,6 +435,7 @@ def exact_fact_bundle(
                         )
                     )
                     and (plan.decaf_required is not True or variant.get("decaf_available") == "Y")
+                    and meets_sugar_limit(variant, plan)
                 ],
             }
             for menu_id in candidate_menu_ids

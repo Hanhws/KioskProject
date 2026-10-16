@@ -27,6 +27,7 @@ class QueryPlan(BaseModel):
     temperature: Optional[Literal["HOT", "ICE"]] = None
     max_price_krw: Optional[int] = None
     max_caffeine_mg: Optional[int] = None
+    max_sugar_g: Optional[float] = None
     decaf_required: Optional[bool] = None
     required_type: Optional[str] = None
     required_category: Optional[str] = None
@@ -112,6 +113,10 @@ PLANNER_PROMPT = ChatPromptTemplate.from_messages([
 - '달달한', '달콤한', '단 음료', '당 충전할 만한' 처럼 당도 단계가 분명한 추천은
   required_sweetness_level='높음'으로 기록하고 같은 표현을 preferred_terms에 중복해 넣지 않습니다.
 - '너무 단 건 싫어', '달지 않은'은 당도 '높음'으로 해석하지 않습니다.
+- '당뇨', '혈당', '저당', '무설탕', '당 적은'처럼 당을 줄여야 하는 추천은 recommend로 분류하고
+  단맛·과일 맛을 inferred_preferences에 넣지 않습니다. 당류 g 숫자 상한을 직접 말했을 때만
+  max_sugar_g에 기록하고 constraint_evidence에 그 구절을 둡니다. 숫자가 없으면 max_sugar_g를 만들지 않습니다.
+  건강 상태를 말해도 situation_response에 '드시기 좋은', '괜찮은'처럼 섭취 적합성을 판단하는 말을 넣지 않습니다.
 - '과일 들어간 거', '과일 메뉴'처럼 재료나 맛을 기준으로 메뉴를 찾는 요청은
   recommend로 분류하고 핵심 표현인 '과일'을 preferred_terms에 기록합니다.
 - '커피 말고'는 required_type='음료', required_coffee_strength='없음'으로 기록합니다. 카페인 0이라고 해석하지 않습니다.
@@ -205,6 +210,9 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
 - 비교 대상은 같은 기준으로 모두 다루고 근거 없는 우열을 만들지 않습니다.
 - 추천은 적용한 필수 조건을 짧게 요약하고 필수 조건 필터를 통과한 후보만 사용합니다.
 - '달지 않음'과 당류 수치를 같게 보지 않습니다. '카페인 적게'에 임의 수치 기준을 만들지 않습니다.
+- max_sugar_g가 있으면 당류가 확인된 후보만 안내하고 메뉴별 당류(g)를 함께 적습니다.
+- 당뇨 등 건강 상태에 따른 섭취 가능 여부는 판단하지 않습니다. 특정 질환에 좋다·안전하다고 말하지 않고,
+  확인된 당류 수치와 함께 의료진 안내를 확인하도록 짧게 덧붙입니다.
 - 옵션은 가능·불가능·자료 부족, 적용 대상, 제외 대상, 추가금, 수량 제한을 구분합니다.
 - 주문을 실제로 변경하거나 완료했다고 말하지 않습니다.
 - 불완전한 표현은 임의 확정하지 말고 근거 있는 실제 선택 예시와 자유 입력 안내를 포함합니다.

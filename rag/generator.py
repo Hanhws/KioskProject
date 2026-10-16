@@ -17,6 +17,7 @@ from .prompts import (
     PLANNER_PROMPT,
     AnswerClaim,
     AnswerDraft,
+    ConstraintEvidence,
     QueryPlan,
 )
 from .retriever import RetrievedEvidence, evidence_to_context
@@ -65,10 +66,39 @@ EXPLICIT_RECOMMENDATION_DETAIL_PATTERNS = (
     "가격", "얼마", "카페인", "칼로리", "당류", "영양", "알레르기", "용량", "성분",
     "설명", "특징", "어떤맛", "맛은", "맛도", "비교",
 )
+# 당뇨·저당 요청은 맛 표현('달지 않은')이 아니라 상세 데이터의 당류(sugar_g)로 거른다.
+# '해당'·'식당'·'적당'의 '당'과 헷갈리지 않도록 앞 글자를 확인한다.
+SUGAR_FREE_PATTERN = re.compile(
+    r"무설탕|무가당|설탕(?:없|안들|안넣|빼|제외)|슈[가거]프리|제로슈[가거]|(?:당류|당분)(?:0|없)|(?<![해식정적])당0g"
+)
+LOW_SUGAR_PATTERN = re.compile(
+    r"저당(?!근|신|일)|(?<![해식정적])당(?:이|을|은)?(?:적은|낮은|줄이|줄여|제한)"
+    r"|(?:당류|당분|설탕)(?:이|가|을|를|은|는)?(?:적|낮|줄|덜)"
+)
+SUGAR_HEALTH_PATTERN = re.compile(r"당뇨|혈당|인슐린|(?<![해식정적])당(?:수치|조절|관리)")
+# 당 제한 요청의 당류 상한(팀 규칙). 무설탕 표현은 0g인 메뉴만 추천한다.
+LOW_SUGAR_MAX_G = 10.0
+DRINK_REQUEST_PATTERN = re.compile(r"음료|마실|마시")
+DESSERT_REQUEST_PATTERN = re.compile(r"디저트|간식|케이크|쿠키|마카롱|샌드위치|브런치|크로플|빵|먹을거|먹을것")
+DRINK_EXCLUSION_PATTERN = re.compile(r"(?:음료수?|마실거|마실것|마시는거|마시는것)(?:는|은)?(?:말고|빼|제외)")
 
 
 def _contains_any(normalized_text: str, patterns: tuple[str, ...]) -> bool:
     return any(normalize_text(pattern) in normalized_text for pattern in patterns)
+
+
+def sugar_limit_request(text: str) -> Optional[float]:
+    """당을 줄여야 하는 요청이면 당류 상한(g)을, 아니면 None을 돌려준다."""
+    normalized = normalize_text(text)
+    if SUGAR_FREE_PATTERN.search(normalized):
+        return 0.0
+    if LOW_SUGAR_PATTERN.search(normalized) or SUGAR_HEALTH_PATTERN.search(normalized):
+        return LOW_SUGAR_MAX_G
+    return None
+
+
+def mentions_sugar_health(text: str) -> bool:
+    return bool(SUGAR_HEALTH_PATTERN.search(normalize_text(text)))
 
 
 def normalize_query_plan(
@@ -123,6 +153,34 @@ def normalize_query_plan(
     ):
         plan.requested_fields = []
 
+    drink = DRINK_REQUEST_PATTERN.search(normalized_question)
+    if (
+        plan.intent == "recommend" and drink
+        and not DESSERT_REQUEST_PATTERN.search(normalized_question)
+        and not DRINK_EXCLUSION_PATTERN.search(normalized_question)
+    ):
+        # '음료'를 말했으면 모델 출력과 관계없이 원문 근거로 음료만 남긴다.
+        plan.required_type = "음료"
+        plan.constraint_evidence = [
+            row for row in plan.constraint_evidence if row.field != "required_type"
+        ] + [ConstraintEvidence(field="required_type", quote=drink.group(0))]
+        plan.explicit_constraint_updates = list(dict.fromkeys([
+            *plan.explicit_constraint_updates, "required_type",
+        ]))
+
+    if plan.intent == "recommend" and sugar_limit_request(question) is not None:
+        # 당 조건은 당류 수치로만 거른다. 모델이 다른 칸에 옮긴 같은 표현과
+        # 건강 적합성을 판단하는 공감 문장은 쓰지 않는다. 당류는 추천 이유로 함께 보여 준다.
+        if plan.required_category and sugar_limit_request(plan.required_category) is not None:
+            plan.required_category = None
+        plan.preferred_terms = [
+            term for term in plan.preferred_terms if sugar_limit_request(term) is None
+        ]
+        plan.requested_fields = [
+            field for field in plan.requested_fields if not re.search(r"당|sugar", field, re.I)
+        ]
+        plan.situation_response = None
+
     if plan.intent == "compare" and not plan.requested_fields:
         plan.requested_fields = ["맛", "가격", "커피 진하기"]
     plan.excluded_menu_ids = sorted(
@@ -133,7 +191,7 @@ def normalize_query_plan(
 
 
 HARD_RECOMMENDATION_FIELDS = (
-    "temperature", "max_price_krw", "max_caffeine_mg", "decaf_required", "required_type",
+    "temperature", "max_price_krw", "max_caffeine_mg", "max_sugar_g", "decaf_required", "required_type",
     "required_category", "required_sweetness_level", "required_coffee_strength",
     "required_situations", "preferred_terms",
 )
@@ -166,7 +224,7 @@ def verified_recommendation_constraints(
             return isinstance(value, list) and all(normalize_text(v) and normalize_text(v) in searchable for v in value)
         if field == "temperature":
             return value in {"HOT", "ICE"}
-        if field in {"max_price_krw", "max_caffeine_mg"}:
+        if field in {"max_price_krw", "max_caffeine_mg", "max_sugar_g"}:
             return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
         return isinstance(value, bool)
 
@@ -174,8 +232,8 @@ def verified_recommendation_constraints(
         text = normalize_text(quote)
         if not text or text not in normalize_text(question):
             return False
-        if field in {"max_price_krw", "max_caffeine_mg"}:
-            unit = "원" if field == "max_price_krw" else "mg|밀리그램"
+        if field in {"max_price_krw", "max_caffeine_mg", "max_sugar_g"}:
+            unit = {"max_price_krw": "원", "max_caffeine_mg": "mg|밀리그램", "max_sugar_g": "g|그램"}[field]
             numeric_text = re.sub(r"[,\s]", "", quote).lower()
             for word, number in {"일": "1", "이": "2", "삼": "3", "사": "4", "오": "5", "육": "6", "칠": "7", "팔": "8", "구": "9", "한": "1", "두": "2"}.items():
                 numeric_text = re.sub(word + r"(?=천|만)", number, numeric_text)
@@ -206,6 +264,7 @@ def verified_recommendation_constraints(
     hard = {field: old[field] for field in HARD_RECOMMENDATION_FIELDS if field in old and valid(field, old[field])}
     defaults = QueryPlan()
     evidence = {row.field: row.quote for row in plan.constraint_evidence}
+    updated = set()
     for field in HARD_RECOMMENDATION_FIELDS:
         value = getattr(plan, field)
         quote = evidence.get(field, "")
@@ -218,11 +277,22 @@ def verified_recommendation_constraints(
         accepted = valid(field, value) and (trusted_plan or grounded(field, value, quote))
         if accepted and (field not in hard or trusted_plan or field in plan.explicit_constraint_updates):
             hard[field] = value
+            updated.add(field)
         elif value is not None and value != [] and field not in hard:
             values = value if isinstance(value, list) else [value]
             allowed = {v for items in vocabulary.values() for v in items}
             plan.inferred_preferences.extend(v for v in values if isinstance(v, str) and v in allowed)
         setattr(plan, field, hard.get(field, getattr(defaults, field)))
+    sugar_limit = sugar_limit_request(question)
+    if sugar_limit is not None:
+        # 당뇨·저당 요청은 숫자가 없어도 당류 상한을 둔다. 이번에 말한 숫자 상한이 있으면 그 값을 따르고,
+        # 이전 상한보다 느슨하게 바꾸지 않으며, 단맛 필수 조건과 함께 두지 않는다.
+        if "max_sugar_g" not in updated:
+            hard["max_sugar_g"] = min(hard.get("max_sugar_g", sugar_limit), sugar_limit)
+        if hard.get("required_sweetness_level") in {"높음", "보통"}:
+            del hard["required_sweetness_level"]
+        plan.max_sugar_g = hard["max_sugar_g"]
+        plan.required_sweetness_level = hard.get("required_sweetness_level")
     plan.inferred_preferences = list(dict.fromkeys(plan.inferred_preferences))[:6]
     return hard
 

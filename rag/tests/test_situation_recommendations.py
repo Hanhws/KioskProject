@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from rag.data_loader import RagConfig, load_rag_data
-from rag.generator import normalize_query_plan
+from rag.generator import normalize_query_plan, sugar_limit_request
 from rag.menu_lookup import filter_recommendation_candidates, recommendation_attributes
 from rag.prompts import AnswerDraft, QueryPlan
 from rag.service import CafeRAGService
@@ -195,11 +195,86 @@ class SituationRecommendationTests(unittest.TestCase):
         self.assertEqual(result["applied_conditions"]["hard_constraints"], {})
 
     def test_unknown_explicit_property_is_not_silently_removed(self):
-        result = self.ask("무설탕만 추천해 줘", QueryPlan(intent="recommend", required_category="무설탕",
-                          explicit_constraint_updates=["required_category"], constraint_evidence=[{"field": "required_category", "quote": "무설탕만"}]))
+        result = self.ask("글루텐프리만 추천해 줘", QueryPlan(intent="recommend", required_category="글루텐프리",
+                          explicit_constraint_updates=["required_category"], constraint_evidence=[{"field": "required_category", "quote": "글루텐프리만"}]))
         self.assertEqual(result["related_menu_ids"], [])
         self.assertIn("확인하기 어려워요", result["answer"])
         self.assertEqual(result["answer"].count("?"), 1)
+
+    def assert_recorded_low_sugar(self, menu_ids, limit, menu_type=None):
+        self.assertTrue(menu_ids)
+        lowest = []
+        for menu_id in menu_ids:
+            menu = self.data.catalog_by_id[menu_id]
+            if menu_type:
+                self.assertEqual(menu["type"], menu_type)
+            recorded = [row["sugar_g"] for row in self.data.variants_by_menu_name[menu["menu_name"]]
+                        if row.get("sugar_g") is not None and row["sugar_g"] <= limit]
+            self.assertTrue(recorded, menu["menu_name"])
+            lowest.append(min(recorded))
+        self.assertEqual(lowest, sorted(lowest))
+
+    def test_diabetes_recommendation_uses_recorded_sugar_not_flavor_guesses(self):
+        # 실제 서버에서 토마토 스무디·레몬에이드·플레인크로플·딸기라떼를 낸 모델 계획을 재현한다.
+        result = self.ask("당뇨환자가 먹을만한 음료 추천해줘", QueryPlan(
+            intent="recommend", menu_terms=["음료"],
+            inferred_preferences=["담백함", "과일", "과채", "상큼함", "가벼운 식사", "가벼운 휴식"],
+            situation_response="당뇨 환자분이 드시기 좋은 음료를 추천해드릴게요.",
+        ))
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(set(result["related_menu_ids"]), {"MENU-001", "MENU-007", "MENU-003", "MENU-002"})
+        self.assert_recorded_low_sugar(result["related_menu_ids"], 10, "음료")
+        self.assertEqual(result["applied_conditions"]["hard_constraints"], {"required_type": "음료", "max_sugar_g": 10})
+        self.assertIn("아메리카노 (당류 0g)", result["answer"])
+        self.assertIn("카푸치노 (따뜻한 것 기준 당류 7g)", result["answer"])
+        self.assertIn("의료진", result["answer"])
+        self.assertNotIn("드시기 좋은", result["answer"])
+        self.assertEqual([row["value"] for row in result["choices"]], result["related_menu_ids"])
+        prior = {**result["applied_conditions"], "excluded_menu_ids": result["related_menu_ids"]}
+        other = self.ask("다른 거 추천해 주세요", QueryPlan(intent="recommend", situation_response="다른 음료를 추천해 드릴게요."), prior)
+        self.assertEqual(other["status"], "no_candidates")
+        self.assertIn("10g 이하로 확인된 음료 중에는 더 추천할 메뉴가 없어요.", other["answer"])
+        self.assertNotIn("추천해 드릴게요", other["answer"])
+
+    def test_low_sugar_limit_survives_follow_up_and_overrides_sweet_requirement(self):
+        first = self.ask("혈당 관리 중인데 달달한 거 추천해 줘", QueryPlan(
+            intent="recommend", required_sweetness_level="높음", inferred_preferences=["달콤함"],
+            constraint_evidence=[{"field": "required_sweetness_level", "quote": "달달한"}],
+        ))
+        self.assertEqual(first["status"], "ok")
+        self.assertNotIn("required_sweetness_level", first["applied_conditions"]["hard_constraints"])
+        self.assert_recorded_low_sugar(first["related_menu_ids"], 10)
+        prior = {**first["applied_conditions"], "excluded_menu_ids": first["related_menu_ids"]}
+        other = self.ask("다른 거 추천해 줘", QueryPlan(intent="recommend", inferred_preferences=["달콤함", "과일"]), prior)
+        self.assertEqual(other["applied_conditions"]["hard_constraints"]["max_sugar_g"], 10)
+        self.assertFalse(set(other["related_menu_ids"]) & set(first["related_menu_ids"]))
+        self.assert_recorded_low_sugar(other["related_menu_ids"], 10)
+        self.assertIn("10g 이하", other["answer"])
+
+    def test_sugar_free_and_explicit_sugar_amount_use_recorded_values(self):
+        sugar_free = self.ask("무설탕만 추천해 줘", QueryPlan(intent="recommend", required_category="무설탕",
+                              explicit_constraint_updates=["required_category"], constraint_evidence=[{"field": "required_category", "quote": "무설탕만"}]))
+        self.assertEqual(sorted(sugar_free["related_menu_ids"]), ["MENU-001", "MENU-007"])
+        self.assertIn("당류가 0g으로 확인된 메뉴만", sugar_free["answer"])
+        explicit = self.ask("당류 5g 이하 음료 추천", QueryPlan(intent="recommend", max_sugar_g=5,
+                            constraint_evidence=[{"field": "max_sugar_g", "quote": "당류 5g 이하"}]))
+        self.assertEqual(explicit["applied_conditions"]["hard_constraints"]["max_sugar_g"], 5)
+        self.assertEqual(sorted(explicit["related_menu_ids"]), ["MENU-001", "MENU-007"])
+        guessed = self.ask("단 건 싫어요", QueryPlan(intent="recommend", max_sugar_g=5))
+        self.assertNotIn("max_sugar_g", guessed["applied_conditions"]["hard_constraints"])
+
+    def test_sugar_request_needs_sugar_words_not_taste_or_lookalike_words(self):
+        for text in ["알레르기 해당 없는 메뉴 추천", "적당히 달달한 거", "달지 않은 음료", "당근 케이크 있어요?"]:
+            self.assertIsNone(sugar_limit_request(text), text)
+        for text, limit in [("당뇨가 있어요", 10), ("저당 음료", 10), ("당류 적은 거", 10),
+                            ("혈당 관리 중", 10), ("무가당 음료", 0), ("설탕 없는 음료", 0)]:
+            self.assertEqual(sugar_limit_request(text), limit, text)
+
+    def test_drink_request_keeps_desserts_out_unless_desserts_are_asked(self):
+        drink = normalize_query_plan(QueryPlan(intent="recommend", required_type="디저트"), self.data, "먹을만한 음료 추천해줘")
+        self.assertEqual(drink.required_type, "음료")
+        for question in ["음료랑 디저트 추천해 줘", "음료 말고 먹을 거 추천"]:
+            self.assertIsNone(normalize_query_plan(QueryPlan(intent="recommend"), self.data, question).required_type, question)
 
     def test_decimal_and_korean_budget_quotes_are_checked_against_amount(self):
         for question, amount in [("3.5천 원 이하로 추천", 3500), ("삼천원 이하로 추천", 3000)]:
