@@ -11,6 +11,7 @@ from .build_index import build_langchain_documents, build_or_load_vectorstore, r
 from .data_loader import RagConfig, RagData, load_rag_data, normalize_text, pipe_values
 from .generator import (
     generate_rag_answer,
+    mentions_sugar_health,
     normalize_query_plan,
     plan_question,
     validate_answer_claims,
@@ -20,6 +21,7 @@ from .menu_lookup import (
     exact_fact_bundle,
     filter_recommendation_candidates,
     find_unavailable_rule,
+    meets_sugar_limit,
     rank_unavailable_fallback_candidates,
     resolve_option_ids,
     resolve_plan_menus,
@@ -31,19 +33,52 @@ from .retriever import retrieve_evidence, search_only, semantic_menu_candidate_i
 
 
 PERSISTED_RECOMMENDATION_FILTERS = (
-    "temperature", "max_price_krw", "max_caffeine_mg", "decaf_required", "required_type",
+    "temperature", "max_price_krw", "max_caffeine_mg", "max_sugar_g", "decaf_required", "required_type",
     "required_category", "required_sweetness_level", "required_coffee_strength",
     "required_situations", "preferred_terms", "excluded_menu_ids",
 )
 
 
-def brief_recommendation_answer(menu_ids: list[str], data: RagData) -> str:
+def sugar_reason(menu_id: str, data: RagData, plan: QueryPlan) -> Optional[str]:
+    """당 제한 추천의 이유는 맛 대신 조건을 통과한 온도의 당류 수치로 보여 준다."""
+    variants = variants_for_menu_id(data, menu_id)
+    eligible = [
+        variant for variant in variants
+        if (not plan.temperature or variant["temperature"] == plan.temperature)
+        and meets_sugar_limit(variant, plan)
+    ]
+    if not eligible:
+        return None
+    low = min(variant["sugar_g"] for variant in eligible)
+    high = max(variant["sugar_g"] for variant in eligible)
+    amount = f"{low:g}g" if low == high else f"{low:g}~{high:g}g"
+    if not plan.temperature and len(eligible) == 1 < len(variants):
+        # 한 온도만 당류가 확인된 메뉴(예: 카푸치노 HOT)는 그 온도를 함께 밝힌다.
+        return f"{'따뜻한 것' if eligible[0]['temperature'] == 'HOT' else '아이스'} 기준 당류 {amount}"
+    return f"당류 {amount}"
+
+
+def sugar_limit_notice(plan: QueryPlan, question: str, found: bool) -> str:
+    target = plan.required_type if plan.required_type in {"음료", "디저트"} else "메뉴"
+    basis = (f"당류가 0g으로 확인된 {target}" if plan.max_sugar_g == 0
+             else f"당류가 {plan.max_sugar_g:g}g 이하로 확인된 {target}")
+    notice = (f"{basis}만 골랐어요." if found else
+              f"{basis} 중에는 {'더 추천할' if plan.excluded_menu_ids else '말씀하신 조건에 맞는'} 메뉴가 없어요.")
+    if mentions_sugar_health(question):
+        notice += " 건강 상태에 따라 섭취 기준이 다를 수 있으니 의료진 안내를 함께 확인해 주세요."
+    return notice
+
+
+def brief_recommendation_answer(
+    menu_ids: list[str], data: RagData, plan: Optional[QueryPlan] = None,
+) -> str:
     suggestions = []
     for menu_id in menu_ids[:4]:
         menu = data.catalog_by_id.get(menu_id)
         if not menu:
             continue
-        reasons = pipe_values(menu.get("flavor_tags"))[:2]
+        sugar = sugar_reason(menu_id, data, plan) if plan is not None and plan.max_sugar_g is not None else None
+        reasons = [sugar] if sugar else pipe_values(menu.get("flavor_tags"))[:2]
         if not reasons and menu.get("sweetness_level"):
             reasons = [f"당도 {menu['sweetness_level']}"]
         reason = f" ({', '.join(reasons)})" if reasons else ""
@@ -427,18 +462,23 @@ class CafeRAGService:
                 for menu_id in draft.related_menu_ids
                 if menu_id in recommendation_ids
             ]
-            if query_plan.inferred_preferences:
-                # 모델이 고른 임의 순서가 실제 속성으로 계산한 우선순위를 덮어쓰지 않게 한다.
+            if query_plan.inferred_preferences or query_plan.max_sugar_g is not None:
+                # 모델이 고른 임의 순서가 실제 속성·당류로 계산한 우선순위를 덮어쓰지 않게 한다.
                 recommended_menu_ids = recommendation_ids
             if not recommended_menu_ids:
                 recommended_menu_ids = recommendation_ids
             recommended_menu_ids = list(dict.fromkeys(recommended_menu_ids))[:3 if stop_clarifying else 4]
-            answer = brief_recommendation_answer(recommended_menu_ids, self.data)
+            unsupported = bool((hard_constraints or {}).get("_unsupported"))
+            sugar_limited = query_plan.max_sugar_g is not None and not unsupported
+            answer = brief_recommendation_answer(recommended_menu_ids, self.data, query_plan)
             if not recommended_menu_ids:
-                answer = ("말씀하신 조건은 메뉴 정보에서 확인하기 어려워요. 다른 조건으로 찾아볼까요?"
-                          if (hard_constraints or {}).get("_unsupported") else
+                answer = ("말씀하신 조건은 메뉴 정보에서 확인하기 어려워요. 다른 조건으로 찾아볼까요?" if unsupported else
+                          "조건을 하나 바꿔서 찾아볼까요?" if sugar_limited else
                           "말씀하신 조건에 맞는 다른 메뉴가 없어요. 조건을 하나 바꿔서 찾아볼까요?")
-            if query_plan.situation_response:
+            if sugar_limited:
+                # 당 조건 추천은 기준과 당류 수치만 보여 주고, 모델이 만든 공감·약속 문장은 붙이지 않는다.
+                answer = sugar_limit_notice(query_plan, question, bool(recommended_menu_ids)) + "\n" + answer
+            elif query_plan.situation_response:
                 answer = query_plan.situation_response.strip() + "\n" + answer
             status = "ok" if recommended_menu_ids else "no_candidates"
             valid_menu_ids = recommended_menu_ids
