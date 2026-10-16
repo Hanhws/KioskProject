@@ -388,6 +388,11 @@ def route_message(request: ChatRequest, rag: RagService, planner: Planner | None
                 conditions["excluded_menu_ids"] = list(dict.fromkeys([
                     *conditions.get("excluded_menu_ids", []), *recommended,
                 ]))
+            if step.kind == "recommend" and re.search(r"싫어|말고|제외", question) and recommended:
+                conditions = {**(conditions or {})}
+                conditions["excluded_menu_ids"] = list(dict.fromkeys([
+                    *conditions.get("excluded_menu_ids", []), *recommended,
+                ]))
             conditions = {**(conditions or {}), "_dialogue_intent": step.kind}
             result = rag.ask(
                 question,
