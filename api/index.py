@@ -228,7 +228,7 @@ def _action(step: TurnStep, cart: dict[str, Any], pending: PendingContext | None
         return {"type": "new_order"}, None, None
     if step.kind == "select_payment":
         if not step.payment_method:
-            return None, "카드와 간편결제 중 선택해 주세요.", None
+            return None, "카드, 간편결제, 현금 중 선택해 주세요.", None
         return {"type": "select_payment", "method": step.payment_method}, None, None
     referent = not step.menu_term or bool(re.search(r"그거|그걸", step.menu_term)) or _ordinal(step.menu_term) is not None
     menu_id = _menu_id(step.menu_term) or (last_menu if referent else None)
@@ -249,7 +249,7 @@ def _action(step: TurnStep, cart: dict[str, Any], pending: PendingContext | None
         if stage == "final_confirm":
             return {"type": "confirm_order"}, None, None
         if stage == "payment":
-            return None, "카드와 간편결제 중 선택해 주세요.", None
+            return None, "카드, 간편결제, 현금 중 선택해 주세요.", None
         if stage == "dine_option":
             return None, "매장에서 드시나요, 포장하시나요?", None
     if step.kind in {"show_cart", "clear_cart", "finish_ordering", "confirm_order"}:

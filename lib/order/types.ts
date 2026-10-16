@@ -1,6 +1,6 @@
 export type Temperature = "HOT" | "ICE";
 export type DineOption = "dine_in" | "takeout";
-export type PaymentMethod = "card" | "easy_pay";
+export type PaymentMethod = "card" | "easy_pay" | "cash";
 
 /** option_id → 횟수. 예: { "OPT-001": 2 } = 샷 2개 추가 */
 export type OptionSelection = Record<string, number>;
@@ -120,7 +120,7 @@ export type CartAction =
   | { type: "finish_ordering" }
   | { type: "show_cart" }
   | { type: "confirm_order" }
-  | { type: "select_payment"; method: PaymentMethod | "cash" }
+  | { type: "select_payment"; method: PaymentMethod }
   | { type: "pay_now" }
   | { type: "new_order" };
 

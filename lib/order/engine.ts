@@ -537,16 +537,19 @@ export function stagePrompt(state: OrderState): KioskReply {
       };
     case "payment":
       return {
-        text: "카드와 간편결제 중 선택해 주세요.",
+        text: "카드, 간편결제, 현금 중 선택해 주세요.",
         choices: [
           { label: "카드", action: { type: "select_payment", method: "card" }, variant: "primary" },
           { label: "간편결제", action: { type: "select_payment", method: "easy_pay" }, variant: "primary" },
+          { label: "현금", action: { type: "select_payment", method: "cash" }, variant: "primary" },
         ],
         menuIds: [],
       };
     case "pay_confirm":
       return {
-        text: `${paymentLabel(state.paymentMethod)}로 총 ${won(total(state))}을 결제할게요. 이대로 결제할까요?`,
+        text: state.paymentMethod === "cash"
+          ? `현금으로 총 ${won(total(state))}을 결제할게요. 주문 후 카운터에서 결제해 주세요. 이대로 주문할까요?`
+          : `${paymentLabel(state.paymentMethod)}로 총 ${won(total(state))}을 결제할게요. 이대로 결제할까요?`,
         choices: [
           { label: "결제하기", action: { type: "pay_now" }, variant: "primary" },
           { label: "결제 수단 바꾸기", action: { type: "confirm_order" } },
@@ -633,18 +636,6 @@ function handle(s: OrderState, ctx: Ctx, action: EngineAction, opts: EngineOptio
       pushStagePrompt(s, ctx);
       return;
     case "select_payment":
-      if (action.method === "cash") {
-        // HTI 7.2
-        ctx.texts.push("죄송해요, 현금 결제는 지원하지 않아요.");
-        if (s.stage === "payment" || s.stage === "pay_confirm") {
-          s.stage = "payment";
-          ctx.promptDone = true;
-          pushStagePrompt(s, ctx);
-        } else {
-          ctx.texts.push("카드와 간편결제로 결제할 수 있어요.");
-        }
-        return;
-      }
       s.paymentMethod = action.method;
       if (s.stage === "payment" || s.stage === "pay_confirm") {
         s.stage = "pay_confirm";
@@ -663,7 +654,10 @@ function handle(s: OrderState, ctx: Ctx, action: EngineAction, opts: EngineOptio
       s.orderNumber = (opts.makeOrderNumber ?? defaultOrderNumber)();
       s.stage = "complete";
       ctx.texts.push(
-        `결제가 완료됐어요. 주문번호는 ${s.orderNumber}번이에요.\n메뉴가 준비되면 번호로 불러 드릴게요.\n(시연용 모의 결제로 실제 결제는 이뤄지지 않았어요.)`,
+        s.paymentMethod === "cash"
+          // 키오스크에 현금 투입구가 없으므로 주문만 접수하고 카운터 결제로 안내한다
+          ? `주문이 접수됐어요. 주문번호는 ${s.orderNumber}번이에요.\n카운터에서 주문번호를 말씀하시고 현금 ${won(total(s))}을 결제해 주세요.\n(시연용 모의 결제로 실제 결제는 이뤄지지 않았어요.)`
+          : `결제가 완료됐어요. 주문번호는 ${s.orderNumber}번이에요.\n메뉴가 준비되면 번호로 불러 드릴게요.\n(시연용 모의 결제로 실제 결제는 이뤄지지 않았어요.)`,
       );
       ctx.choices.push({ label: "새 주문 시작", action: { type: "new_order" }, variant: "primary" });
       ctx.promptDone = true;

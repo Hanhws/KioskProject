@@ -585,6 +585,7 @@ class PaymentRequestTests(unittest.TestCase):
             ("카드로 결제할게요", "payment", {"type": "select_payment", "method": "card"}),
             ("간편결제로 할게요", "payment", {"type": "select_payment", "method": "easy_pay"}),
             ("현금", "payment", {"type": "select_payment", "method": "cash"}),
+            ("현금으로 할게요", "payment", {"type": "select_payment", "method": "cash"}),
             ("새 주문 시작", "complete", {"type": "new_order"}),
             ("전체 취소", "more", {"type": "clear_cart"}),
         ]
@@ -627,7 +628,7 @@ class PaymentRequestTests(unittest.TestCase):
     def test_payment_request_does_not_reset_unfinished_selection(self):
         rag = RecordingRAG()
         with TestClient(create_app(rag)) as client:
-            for stage, question in [("payment", "카드와 간편결제"), ("dine_option", "매장에서 드시나요")]:
+            for stage, question in [("payment", "카드, 간편결제, 현금"), ("dine_option", "매장에서 드시나요")]:
                 body = request("결제하기", [LATTE_LINE])
                 body["context"]["cart"]["stage"] = stage
                 result = client.post("/api/chat", json=body).json()

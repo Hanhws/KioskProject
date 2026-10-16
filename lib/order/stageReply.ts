@@ -18,7 +18,9 @@ const DINE_IN = /^(?:매장(?:이요|에서\s*먹을게요)?|먹고\s*갈게요|
 const TAKEOUT = /^(?:포장(?:이요|할게요|해\s*주세요)?|테이크아웃(?:이요)?|가져갈게요)$/;
 const CARD = /^(?:카드(?:로\s*(?:결제\s*)?(?:할게요|해\s*주세요)|요)?|신용카드|체크카드)$/;
 const EASY_PAY = /^(?:간편결제(?:로\s*(?:결제\s*)?(?:할게요|해\s*주세요)|요)?|(?:삼성|카카오|네이버|애플|토스)페이(?:로\s*(?:결제\s*)?(?:할게요|해\s*주세요)|요)?)$/i;
-const CASH = /^현금(?:\s*돼요\?)?$/;
+const CASH = /^현금(?:이요|요|으로\s*(?:결제\s*)?(?:할게요|해\s*주세요)|\s*결제(?:할게요|해\s*주세요)?)?$/;
+// "현금 돼요?"는 결제 수단 질문이라 최종 확인 단계에서 주문 동의로 보지 않는다
+const CASH_ASK = /^현금(?:\s*결제)?(?:도)?\s*(?:돼요|되나요|가능해요|가능한가요)\??$/;
 const PAY = /^(?:결제|계산)\s*(?:하기|해\s*줘(?:요)?|해\s*주세요|할게요|진행해\s*주세요)$/;
 const DONE = /^(?:그게\s*다예요|이제\s*됐어요|다\s*됐어요|더\s*없어요|없어요|없습니다|괜찮아요|주문할게요|결제할게요|계산할게요)$/;
 
@@ -94,10 +96,13 @@ export function interpretStageReply(state: OrderState, rawText: string): EngineA
       if (EASY_PAY.test(text)) return [
         { type: "confirm_order" }, { type: "select_payment", method: "easy_pay" }, { type: "pay_now" },
       ];
+      if (CASH.test(text)) return [
+        { type: "confirm_order" }, { type: "select_payment", method: "cash" }, { type: "pay_now" },
+      ];
       return null;
     case "payment":
     case "pay_confirm":
-      if (CASH.test(text)) return [{ type: "select_payment", method: "cash" }];
+      if (CASH.test(text) || CASH_ASK.test(text)) return [{ type: "select_payment", method: "cash" }];
       if (CARD.test(text)) return [{ type: "select_payment", method: "card" }];
       if (EASY_PAY.test(text)) return [{ type: "select_payment", method: "easy_pay" }];
       if (state.stage === "pay_confirm" && YES.test(text)) return [{ type: "pay_now" }];

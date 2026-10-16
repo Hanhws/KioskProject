@@ -70,7 +70,7 @@ def control_step(message: str, context: dict) -> TurnStep | None:
         return TurnStep(kind="confirm_order", text=message)
     if key == "네,주문할게요" and context.get("cart", {}).get("stage") == "final_confirm":
         return TurnStep(kind="confirm_order", text=message)
-    method = re.fullmatch(r"(카드|신용카드|체크카드|간편결제|카카오페이|네이버페이|삼성페이|애플페이|토스페이|현금)(?:로)?(?:결제)?(?:할게요|해주세요|해줘요|해줘|요)?", key)
+    method = re.fullmatch(r"(카드|신용카드|체크카드|간편결제|카카오페이|네이버페이|삼성페이|애플페이|토스페이|현금)(?:으로|로|이요)?(?:결제)?(?:할게요|해주세요|해줘요|해줘|요)?", key)
     if method:
         name = method.group(1)
         return TurnStep(kind="select_payment", text=message, payment_method=(

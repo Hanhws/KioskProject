@@ -255,6 +255,7 @@ input { font: inherit; color: inherit; }
 .done-card .no { font-size: 64px; font-weight: 800; line-height: 1.1; margin: 8px 0 4px; }
 .done-card p { color: var(--ink-2); margin: 6px 0; }
 .done-card .done-note { font-size: 12px; color: var(--ink-3); }
+.done-card .done-cash { color: var(--ink); font-weight: 700; background: var(--accent-soft); border-radius: var(--radius); padding: 10px 12px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 960px) {

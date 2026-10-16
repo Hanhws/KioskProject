@@ -3,7 +3,7 @@
     "schema": "langchain-document-faiss-v1",
     "embedding_text_format": "labeled-title-keywords-content-v1",
     "embedding_model": "text-embedding-3-small",
-    "data_sha256": "52902620d5d0b3dc8284913fa38cd1e492cba15a92ce2c73c207f441cfb73cf8",
+    "data_sha256": "45a7a1be68a06e922b54d536d931bc9a8b57e0cefc051f9c1fc6881da139415e",
     "document_count": 132
   },
   "input_validation": {
@@ -22,8 +22,8 @@
     "path": "rag/rag_embeddings.json",
     "document_count": 132,
     "vector_dimension": 1536,
-    "sha256": "f8dcea52027a526a10154749afd1fc3571d6dc98a7640a905255ff8e0765895b",
-    "bytes": 4291368
+    "sha256": "96e7b6fa6b3ba9217747816d678c4329067a6e79be35be480e2e3ee6d5fd7dfc",
+    "bytes": 4291933
   },
   "index_action": "rebuilt"
 }

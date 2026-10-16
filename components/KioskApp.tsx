@@ -216,9 +216,17 @@ export default function KioskApp() {
       {order.stage === "complete" && order.orderNumber && (
         <div className="scrim" role="dialog" aria-modal="true" aria-label="주문 완료">
           <div className="done-card">
-            <p>주문이 완료됐어요</p>
+            <p>{order.paymentMethod === "cash" ? "주문이 접수됐어요" : "주문이 완료됐어요"}</p>
             <div className="no num">{order.orderNumber}</div>
-            <p>메뉴가 준비되면 번호로 불러 드릴게요.</p>
+            {order.paymentMethod === "cash" ? (
+              <p className="done-cash">
+                카운터에서 주문번호를 말씀하시고
+                <br />
+                현금 <span className="num">{won(cart.total)}</span>을 결제해 주세요.
+              </p>
+            ) : (
+              <p>메뉴가 준비되면 번호로 불러 드릴게요.</p>
+            )}
             <p className="done-note">시연용 모의 결제로 실제 결제는 이뤄지지 않았어요.</p>
             <button
               type="button"

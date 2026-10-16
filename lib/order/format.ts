@@ -19,6 +19,7 @@ export function dineLabel(value: DineOption | null): string {
 export function paymentLabel(value: PaymentMethod | null): string {
   if (value === "card") return "카드";
   if (value === "easy_pay") return "간편결제";
+  if (value === "cash") return "현금";
   return "";
 }
 

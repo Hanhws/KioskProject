@@ -326,7 +326,34 @@ describe("주문 진행 흐름 (flow)", () => {
     const state = { ...initialOrderState(), stage: "payment" as const };
     expect(interpretStageReply(state, "카드로 결제할게요")).toEqual([{ type: "select_payment", method: "card" }]);
     expect(interpretStageReply(state, "간편결제로 할게요")).toEqual([{ type: "select_payment", method: "easy_pay" }]);
+    for (const text of ["현금", "현금이요", "현금으로 결제할게요", "현금 돼요?"]) {
+      expect(interpretStageReply(state, text)).toEqual([{ type: "select_payment", method: "cash" }]);
+    }
     expect(interpretStageReply(state, "카드로 할게요, 케이크도 추가요")).toBeNull();
+  });
+
+  it("최종 확인에서 현금 가능 여부 질문은 주문 동의로 보지 않는다", () => {
+    const state = { ...initialOrderState(), stage: "final_confirm" as const };
+    expect(interpretStageReply(state, "현금 돼요?")).toBeNull();
+    expect(interpretStageReply(state, "현금으로 할게요")).toEqual([
+      { type: "confirm_order" }, { type: "select_payment", method: "cash" }, { type: "pay_now" },
+    ]);
+  });
+
+  it("현금 결제는 주문을 접수하고 카운터 결제로 안내한다", () => {
+    let result = run(initialOrderState(), add(AMERICANO, { temperature: "ICE" }));
+    result = run(result.state, { type: "set_dine_option", value: "takeout" });
+    result = run(result.state, { type: "finish_ordering" });
+    result = run(result.state, { type: "confirm_order" });
+    expect(result.reply.choices.map((choice) => choice.label)).toEqual(["카드", "간편결제", "현금"]);
+    result = run(result.state, { type: "select_payment", method: "cash" });
+    expect(result.state.stage).toBe("pay_confirm");
+    expect(result.state.paymentMethod).toBe("cash");
+    expect(result.reply.text).toContain("카운터에서 결제해 주세요");
+    result = run(result.state, { type: "pay_now" });
+    expect(result.state.stage).toBe("complete");
+    expect(result.reply.text).toContain("주문이 접수됐어요");
+    expect(result.reply.text).toContain("카운터에서 주문번호를 말씀하시고 현금 2,500원을 결제해 주세요.");
   });
 
   it("최종 확인에서 결제 수단까지 말하면 모의 주문을 완료한다", () => {
@@ -388,11 +415,7 @@ describe("주문 진행 흐름 (flow)", () => {
 
     result = run(result.state, ...interpretStageReply(result.state, "네")!);
     expect(result.state.stage).toBe("payment");
-    expect(result.reply.text).toBe("카드와 간편결제 중 선택해 주세요.");
-
-    result = run(result.state, ...interpretStageReply(result.state, "현금 돼요?")!);
-    expect(result.reply.text).toContain("현금 결제는 지원하지 않아요");
-    expect(result.state.stage).toBe("payment");
+    expect(result.reply.text).toBe("카드, 간편결제, 현금 중 선택해 주세요.");
 
     result = run(result.state, ...interpretStageReply(result.state, "카드로 할게요")!);
     expect(result.state.stage).toBe("pay_confirm");
