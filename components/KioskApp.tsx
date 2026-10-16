@@ -21,6 +21,8 @@ export default function KioskApp() {
   const [draft, setDraft] = useState("");
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+  // 큰 글씨 모드: 글자·버튼·터치 영역을 키우고 흐린 글자의 대비를 높인다 (디지털 소외계층 배려)
+  const [largeText, setLargeText] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const stateRef = useRef(state);
   const abortRef = useRef<AbortController | null>(null);
@@ -115,7 +117,7 @@ export default function KioskApp() {
   const cart = priceCart(order.lines);
 
   return (
-    <div className="app">
+    <div className={`app${largeText ? " large" : ""}`}>
       <header className="header">
         <div className="brand">
           <span className="brand-mark" aria-hidden>
@@ -132,6 +134,18 @@ export default function KioskApp() {
           </button>
         </div>
         <div className="header-spacer" />
+        <button
+          type="button"
+          className="large-toggle"
+          aria-pressed={largeText}
+          aria-label="큰 글씨로 보기"
+          onClick={() => setLargeText((value) => !value)}
+        >
+          <span className="large-toggle-mark" aria-hidden>
+            가
+          </span>
+          <span className="large-toggle-label">{largeText ? "기본 글씨" : "큰 글씨"}</span>
+        </button>
         <button
           type="button"
           className="ghost-btn"
@@ -205,7 +219,7 @@ export default function KioskApp() {
             <p>주문이 완료됐어요</p>
             <div className="no num">{order.orderNumber}</div>
             <p>메뉴가 준비되면 번호로 불러 드릴게요.</p>
-            <p style={{ fontSize: 12, color: "var(--ink-3)" }}>시연용 모의 결제로 실제 결제는 이뤄지지 않았어요.</p>
+            <p className="done-note">시연용 모의 결제로 실제 결제는 이뤄지지 않았어요.</p>
             <button
               type="button"
               className="cta"
